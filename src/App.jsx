@@ -77,6 +77,7 @@ export default function App(){
   const[myAddress,setMyAddress]=useState({name:"",phone:"",zonecode:"",address:"",addressDetail:""});
   const[addrMsg,setAddrMsg]=useState("");
   const[addrSaving,setAddrSaving]=useState(false);
+  const[addrEditMode,setAddrEditMode]=useState(false);
   const[selYr,setSelYr]=useState(new Date().getFullYear());
   const[selMo,setSelMo]=useState(new Date().getMonth()+1);
   const[availableProds,setAvailableProds]=useState([]);
@@ -353,7 +354,16 @@ export default function App(){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
       const parsed=rows.slice(1).filter(r=>r[0]||r[1]||r[2])
-        .map(r=>({gen:String(r[0]||"").trim(),nick:String(r[1]||"").trim(),phone:String(r[2]||"").trim()}))
+        .map(r=>({
+          gen:String(r[0]||"").trim(),
+          nick:String(r[1]||"").trim(),
+          phone:String(r[2]||"").trim(),
+          name:String(r[3]||"").trim(),
+          deliveryPhone:String(r[4]||"").trim(),
+          zonecode:String(r[5]||"").trim(),
+          address:String(r[6]||"").trim(),
+          addressDetail:String(r[7]||"").trim()
+        }))
         .filter(r=>r.gen&&r.nick&&r.phone);
       if(!parsed.length){setExcelErr("유효한 데이터가 없습니다.");return;}
       setExcelPreview(parsed);
@@ -363,7 +373,12 @@ export default function App(){
     const existing=await db.get("supporters")||[];let added=0;
     for(const p of excelPreview){
       if(!existing.find(s=>s.gen===p.gen&&s.nick===p.nick)){
-        existing.push({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,...p,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")});added++;
+        const newSupp={id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")};
+        existing.push(newSupp);
+        if(p.address){
+          await db.set(`address:${newSupp.id}`,{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail});
+        }
+        added++;
       }
     }
     await db.set("supporters",existing);setSupps(existing);setExcelPreview([]);
@@ -398,7 +413,11 @@ export default function App(){
   };
   const downloadAddrTemplate=()=>{
     const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([["닉네임","기수","우편번호","주소","상세주소"],["예시닉네임","1기","12345","서울시 강남구 테헤란로 1","101호"]]);
+    const ws=XLSX.utils.aoa_to_sheet([
+      ["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],
+      ["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]
+    ]);
+    ws["!cols"]=[{wch:8},{wch:12},{wch:14},{wch:12},{wch:16},{wch:10},{wch:30},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws,"주소목록");XLSX.writeFile(wb,"주소_업로드_양식.xlsx");
   };
 
@@ -623,23 +642,57 @@ export default function App(){
 
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
-            <div style={card}>
-              <div style={{fontSize:13,color:MUTED,marginBottom:14}}>제품 배송을 위한 수령인 정보와 주소를 등록해 주세요.</div>
-              <label style={lbl}>수령인 이름 *</label>
-              <input style={inp} placeholder="실명 입력" value={myAddress.name||""} onChange={e=>setMyAddress(a=>({...a,name:e.target.value}))}/>
-              <label style={lbl}>연락처 *</label>
-              <input style={inp} placeholder="예: 010-1234-5678" value={myAddress.phone||""} onChange={e=>setMyAddress(a=>({...a,phone:e.target.value}))}/>
-              <label style={lbl}>주소 검색</label>
-              <div style={{display:"flex",gap:8,marginBottom:10}}>
-                <input style={{...inp,marginBottom:0,flex:1}} placeholder="우편번호" value={myAddress.zonecode} readOnly/>
-                <button onClick={openPostcode} style={{...btn(PC),whiteSpace:"nowrap",padding:"10px 16px"}}>🔍 검색</button>
+
+            {/* 저장된 주소 보기 모드 */}
+            {myAddress.address&&!addrEditMode?(
+              <div style={card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontWeight:700,fontSize:14}}>등록된 배송 정보</div>
+                  <button onClick={()=>setAddrEditMode(true)} style={btn(BRAND.primaryLight,PC,true)}>✏️ 수정하기</button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    ["수령인",myAddress.name],
+                    ["연락처",myAddress.phone],
+                    ["우편번호",myAddress.zonecode],
+                    ["주소",myAddress.address],
+                    ["상세주소",myAddress.addressDetail||"-"]
+                  ].map(([label,value])=>(
+                    <div key={label} style={{display:"flex",gap:12,padding:"10px 14px",background:"#F9F6F2",borderRadius:8}}>
+                      <span style={{fontSize:12,color:MUTED,minWidth:60,fontWeight:700}}>{label}</span>
+                      <span style={{fontSize:13,fontWeight:500}}>{value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <input style={inp} placeholder="기본 주소" value={myAddress.address} readOnly/>
-              <label style={lbl}>상세 주소</label>
-              <input style={inp} placeholder="동/호수 등 상세 주소 입력" value={myAddress.addressDetail} onChange={e=>setMyAddress(a=>({...a,addressDetail:e.target.value}))}/>
-              <button onClick={saveAddress} disabled={addrSaving} style={{...btn(PC),width:"100%",opacity:addrSaving?0.7:1}}>{addrSaving?"저장 중...":"주소 저장"}</button>
-              {addrMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{addrMsg}</div>}
-            </div>
+            ):(
+              /* 입력/수정 모드 */
+              <div style={card}>
+                {addrEditMode&&(
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontWeight:700,fontSize:14}}>배송 정보 수정</div>
+                    <button onClick={()=>setAddrEditMode(false)} style={btn("#EEE8E0",TEXT,true)}>← 취소</button>
+                  </div>
+                )}
+                {!addrEditMode&&<div style={{fontSize:13,color:MUTED,marginBottom:14}}>제품 배송을 위한 수령인 정보와 주소를 등록해 주세요.</div>}
+                <label style={lbl}>수령인 이름 *</label>
+                <input style={inp} placeholder="실명 입력" value={myAddress.name||""} onChange={e=>setMyAddress(a=>({...a,name:e.target.value}))}/>
+                <label style={lbl}>연락처 *</label>
+                <input style={inp} placeholder="예: 010-1234-5678" value={myAddress.phone||""} onChange={e=>setMyAddress(a=>({...a,phone:e.target.value}))}/>
+                <label style={lbl}>주소 검색</label>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <input style={{...inp,marginBottom:0,flex:1}} placeholder="우편번호" value={myAddress.zonecode} readOnly/>
+                  <button onClick={openPostcode} style={{...btn(PC),whiteSpace:"nowrap",padding:"10px 16px"}}>🔍 검색</button>
+                </div>
+                <input style={inp} placeholder="기본 주소" value={myAddress.address} readOnly/>
+                <label style={lbl}>상세 주소</label>
+                <input style={inp} placeholder="동/호수 등 상세 주소 입력" value={myAddress.addressDetail} onChange={e=>setMyAddress(a=>({...a,addressDetail:e.target.value}))}/>
+                <button onClick={async()=>{await saveAddress();setAddrEditMode(false);}} disabled={addrSaving} style={{...btn(PC),width:"100%",opacity:addrSaving?0.7:1}}>
+                  {addrSaving?"저장 중...":"주소 저장"}
+                </button>
+                {addrMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{addrMsg}</div>}
+              </div>
+            )}
           </>)}
 
           {sp==="inquiry"&&(<>
@@ -697,40 +750,27 @@ export default function App(){
           </div>
           <div style={card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:15}}>📊 회원 엑셀 등록</div>
+              <div style={{fontWeight:700,fontSize:15}}>📊 회원 엑셀 일괄 등록</div>
               <button onClick={downloadTemplate} style={btn(BRAND.primaryLight,PC,true)}>📥 양식</button>
             </div>
+            <div style={{fontSize:12,color:MUTED,marginBottom:10}}>기수·닉네임·전화번호 필수 / 주소 정보는 선택 입력</div>
             <label style={{display:"block",border:`1.5px dashed ${BORDER}`,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:MUTED,background:"#FAFAFA",marginBottom:8}}>
               📂 엑셀 파일 선택<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleExcelUpload(e.target.files[0])}/>
             </label>
             {excelErr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:8}}>{excelErr}</div>}
             {excelPreview.length>0&&(<>
               <div style={{maxHeight:140,overflowY:"auto",border:`1px solid ${BORDER}`,borderRadius:8,marginBottom:10}}>
-                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:`1px solid ${BORDER}`,fontSize:13,display:"flex",gap:10}}><span style={{color:MUTED}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:MUTED}}>{p.phone}</span></div>))}
+                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:`1px solid ${BORDER}`,fontSize:13,display:"flex",gap:10}}>
+                  <span style={{color:MUTED}}>{i+1}</span>
+                  <span style={{fontWeight:700}}>{p.gen}</span>
+                  <span>{p.nick}</span>
+                  <span style={{color:MUTED}}>{p.phone}</span>
+                  {p.address&&<span style={{color:PC,fontSize:11}}>📦 주소있음</span>}
+                </div>))}
               </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={confirmExcelUpload} style={{...btn(PC),flex:1}}>✅ 등록 확정</button>
                 <button onClick={()=>setExcelPreview([])} style={{...btn("#EEE8E0",TEXT)}}>취소</button>
-              </div>
-            </>)}
-          </div>
-          <div style={card}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:15}}>📦 주소 일괄 업로드</div>
-              <button onClick={downloadAddrTemplate} style={btn(BRAND.primaryLight,PC,true)}>📥 양식</button>
-            </div>
-            <div style={{fontSize:12,color:MUTED,marginBottom:10}}>양식: 닉네임 | 기수 | 우편번호 | 주소 | 상세주소</div>
-            <label style={{display:"block",border:`1.5px dashed ${BORDER}`,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:MUTED,background:"#FAFAFA",marginBottom:8}}>
-              📂 주소 엑셀 선택<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleAddrExcelUpload(e.target.files[0])}/>
-            </label>
-            {addrExcelErr&&<div style={{color:addrExcelPreview.length===0?PC:"#C0392B",fontSize:13,marginBottom:8}}>{addrExcelErr}</div>}
-            {addrExcelPreview.length>0&&(<>
-              <div style={{maxHeight:140,overflowY:"auto",border:`1px solid ${BORDER}`,borderRadius:8,marginBottom:10}}>
-                {addrExcelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:`1px solid ${BORDER}`,fontSize:12,display:"flex",gap:8,flexWrap:"wrap"}}><span style={{fontWeight:700}}>{p.gen} {p.nick}</span><span style={{color:MUTED}}>{p.address} {p.addressDetail}</span></div>))}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={confirmAddrUpload} style={{...btn(PC),flex:1}}>✅ 주소 업로드 확정</button>
-                <button onClick={()=>setAddrExcelPreview([])} style={{...btn("#EEE8E0",TEXT)}}>취소</button>
               </div>
             </>)}
           </div>

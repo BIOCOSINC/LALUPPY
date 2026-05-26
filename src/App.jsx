@@ -95,6 +95,7 @@ export default function App() {
   const [actYear, setActYear] = useState(new Date().getFullYear());
   const [actMonth, setActMonth] = useState(new Date().getMonth() + 1);
   const [actGen, setActGen] = useState("전체");
+  const [actGrade, setActGrade] = useState("전체");
   const [actSummary, setActSummary] = useState({});
   const [loadingSum, setLoadingSum] = useState(false);
   const [allInquiries, setAllInquiries] = useState([]);
@@ -606,12 +607,17 @@ export default function App() {
                 <option value="전체">전체 기수</option>
                 {[...new Set(supps.map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}
               </select>
+              <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={sel}>
+                <option value="전체">전체 등급</option>
+                <option value={G.L}>라루피</option>
+                <option value={G.S}>라루피시크릿</option>
+              </select>
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
               <button onClick={downloadActivityExcel} disabled={downloading} style={{...btn(PC,undefined,true),marginLeft:"auto",padding:"6px 14px",opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📥 엑셀 다운로드"}</button>
             </div>
             {supps.length===0&&<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>}
             {loadingSum&&<div style={{textAlign:"center",padding:20,color:MUTED,fontSize:13}}>불러오는 중...</div>}
-            {!loadingSum&&supps.filter(s=>actGen==="전체"||s.gen===actGen).map(s=>{
+            {!loadingSum&&supps.filter(s=>(actGen==="전체"||s.gen===actGen)&&(actGrade==="전체"||s.grade===actGrade)).map(s=>{
               const d=(actSummary[s.id]||{})[actMonth], has=!!d&&d.total>0;
               return(<div key={s.id} style={{...card,padding:"14px 16px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>

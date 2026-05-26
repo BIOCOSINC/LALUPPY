@@ -1,0 +1,22 @@
+{
+  "name": "LALUPPY 써포터즈",
+  "short_name": "LALUPPY",
+  "description": "라루피 써포터즈 활동 관리 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#004638",
+  "theme_color": "#004638",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

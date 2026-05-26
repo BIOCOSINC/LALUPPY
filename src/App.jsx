@@ -74,7 +74,7 @@ export default function App(){
   const[iqf,setIqf]=useState({title:"",content:""});
   const[iqMsg,setIqMsg]=useState("");
   const[iqSending,setIqSending]=useState(false);
-  const[myAddress,setMyAddress]=useState({zonecode:"",address:"",addressDetail:""});
+  const[myAddress,setMyAddress]=useState({name:"",phone:"",zonecode:"",address:"",addressDetail:""});
   const[addrMsg,setAddrMsg]=useState("");
   const[addrSaving,setAddrSaving]=useState(false);
   const[selYr,setSelYr]=useState(new Date().getFullYear());
@@ -210,10 +210,12 @@ export default function App(){
   };
 
   const saveAddress=async()=>{
+    if(!myAddress.name){setAddrMsg("수령인 이름을 입력해 주세요.");return;}
+    if(!myAddress.phone){setAddrMsg("연락처를 입력해 주세요.");return;}
     if(!myAddress.address){setAddrMsg("주소를 검색해 주세요.");return;}
     setAddrSaving(true);
     const ok=await db.set(`address:${me.id}`,myAddress);
-    setAddrMsg(ok?"주소가 저장되었습니다! ✓":"저장에 실패했습니다.");
+    setAddrMsg(ok?"저장되었습니다! ✓":"저장에 실패했습니다.");
     setTimeout(()=>setAddrMsg(""),2500);setAddrSaving(false);
   };
 
@@ -375,7 +377,7 @@ export default function App(){
 
   const downloadActivityExcel=async()=>{
     setDownloading(true);const wb=XLSX.utils.book_new();
-    const sum=[["기수","닉네임","등급","우편번호","주소","상세주소","년도","월","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
+    const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     const extra=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
@@ -388,7 +390,7 @@ export default function App(){
         const vc=(d.virals||[]).filter(v=>v.link||v.photo).length;
         const ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
         const sel=await db.get(`selection:${s.id}:${d.year}:${d.month}`);
-        sum.push([s.gen,s.nick,grade,addr.zonecode||"",addr.address||"",addr.addressDetail||"",d.year,d.month,sel?.productName||"",sel?.productCode||"",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        sum.push([s.gen,s.nick,grade,addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",d.year,d.month,sel?.productName||"",sel?.productCode||"",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
         (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,d.year,d.month,i+1,b.link]);});
         (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,d.year,d.month,i+1,v.link||"",v.photo?"O":"X"]);});
         (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,d.year,d.month,i+1,e.link||"",e.photo?"O":"X"]);});
@@ -593,7 +595,11 @@ export default function App(){
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
             <div style={card}>
-              <div style={{fontSize:13,color:MUTED,marginBottom:14}}>제품 배송을 위한 주소를 등록해 주세요.</div>
+              <div style={{fontSize:13,color:MUTED,marginBottom:14}}>제품 배송을 위한 수령인 정보와 주소를 등록해 주세요.</div>
+              <label style={lbl}>수령인 이름 *</label>
+              <input style={inp} placeholder="실명 입력" value={myAddress.name||""} onChange={e=>setMyAddress(a=>({...a,name:e.target.value}))}/>
+              <label style={lbl}>연락처 *</label>
+              <input style={inp} placeholder="예: 010-1234-5678" value={myAddress.phone||""} onChange={e=>setMyAddress(a=>({...a,phone:e.target.value}))}/>
               <label style={lbl}>주소 검색</label>
               <div style={{display:"flex",gap:8,marginBottom:10}}>
                 <input style={{...inp,marginBottom:0,flex:1}} placeholder="우편번호" value={myAddress.zonecode} readOnly/>

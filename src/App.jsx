@@ -27,7 +27,7 @@ const GC={laroupi:"#004638",laroupisecret:"#2A6B55"};
 const GB={laroupi:"#E6F0ED",laroupisecret:"#D6EBE3"};
 const YEARS=[2024,2025,2026,2027,2028,2029,2030];
 const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
-const BRAND={logoText:"LALUPPY",primary:"#004638",primaryLight:"#E6F0ED"};
+const BRAND={logoUrl:"/logo.png",logoText:"LALUPPY",primary:"#004638",primaryLight:"#E6F0ED"};
 
 async function compressImage(file) {
   return new Promise(res=>{
@@ -413,7 +413,9 @@ export default function App(){
   const ctr={maxWidth:500,margin:"0 auto",padding:"0 16px"};
   const sel={border:`1px solid ${BORDER}`,borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:PC,background:BRAND.primaryLight,cursor:"pointer",outline:"none"};
 
-  const Logo=({dark})=><span style={{fontFamily:"'Apple SD Gothic Neo','Noto Sans KR',sans-serif",fontWeight:900,fontSize:20,letterSpacing:"0.05em",color:dark?"#fff":PC}}>{BRAND.logoText}</span>;
+  const Logo=({dark})=>BRAND.logoUrl
+    ?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:dark?32:28,objectFit:"contain",filter:dark?"brightness(0) invert(1)":"none"}}/>
+    :<span style={{fontFamily:"'Apple SD Gothic Neo','Noto Sans KR',sans-serif",fontWeight:900,fontSize:20,letterSpacing:"0.05em",color:dark?"#fff":PC}}>{BRAND.logoText}</span>;
 
   const photoField=(src,setter,required=false)=>(
     <div style={{marginTop:6,marginBottom:4}}>

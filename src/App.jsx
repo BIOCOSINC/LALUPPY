@@ -118,6 +118,26 @@ export default function App(){
   const[addrExcelErr,setAddrExcelErr]=useState("");
   const[addrExcelPreview,setAddrExcelPreview]=useState([]);
 
+  // PWA 뒤로가기/앞으로가기로 앱 꺼짐 방지
+  useEffect(()=>{
+    window.history.pushState(null,"",window.location.href);
+    const handlePop=()=>{
+      window.history.pushState(null,"",window.location.href);
+    };
+    window.addEventListener("popstate",handlePop);
+    return()=>window.removeEventListener("popstate",handlePop);
+  },[]);
+
+  // 앱 시작 시 저장된 로그인 정보 복원
+  useEffect(()=>{
+    const saved = sessionStorage.getItem("laluppy_user");
+    const savedView = sessionStorage.getItem("laluppy_view");
+    if(saved && savedView){
+      setMe(JSON.parse(saved));
+      setView(savedView);
+    }
+  },[]);
+
   useEffect(()=>{
     if(view==="admin"){
       db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
@@ -176,14 +196,21 @@ export default function App(){
 
   const doLogin=async()=>{
     if(adminMode){
-      if(lf.code===ADMIN_CODE){setView("admin");setLerr("");}
+      if(lf.code===ADMIN_CODE){
+        setView("admin");setLerr("");
+        sessionStorage.setItem("laluppy_view","admin");
+      }
       else setLerr("관리자 코드가 올바르지 않습니다.");
       return;
     }
     if(!lf.gen||!lf.nick||!lf.phone){setLerr("모든 항목을 입력해 주세요.");return;}
     const list=await db.get("supporters")||[];
     const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
-    if(found){setMe(found);setView("supporter");setLerr("");setSp("notices");}
+    if(found){
+      setMe(found);setView("supporter");setLerr("");setSp("notices");
+      sessionStorage.setItem("laluppy_user", JSON.stringify(found));
+      sessionStorage.setItem("laluppy_view", "supporter");
+    }
     else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
   };
 
@@ -473,7 +500,7 @@ export default function App(){
             {[["notices","공지"],["months","활동"],["product","제품"],["myinfo","내정보"],["inquiry","문의"]].map(([id,label])=>(
               <button key={id} onClick={()=>setSp(id)} style={btn(sp===id?PC:"#EEE8E0",sp===id?"#fff":TEXT,true)}>{label}</button>
             ))}
-            <button onClick={()=>{setView("login");setMe(null);setLf({gen:"",nick:"",phone:"",code:""}); }} style={btn("#FDECEA","#C0392B",true)}>로그아웃</button>
+            <button onClick={()=>{setView("login");setMe(null);setLf({gen:"",nick:"",phone:"",code:""});sessionStorage.clear();}} style={btn("#FDECEA","#C0392B",true)}>로그아웃</button>
           </div>
         </div>
         <div style={{...ctr,paddingTop:20}}>
@@ -647,7 +674,7 @@ export default function App(){
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
       <div style={{background:PC,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
-        <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));}} style={btn("rgba(255,255,255,0.15)","#fff",true)}>로그아웃</button>
+        <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={btn("rgba(255,255,255,0.15)","#fff",true)}>로그아웃</button>
       </div>
       <div style={{display:"flex",background:CARD,borderBottom:`1px solid ${BORDER}`,overflowX:"auto"}}>
         {[["supporters","써포터즈"],["notices","공지사항"],["products","제품관리"],["activities","활동조회"],["inquiries","문의관리"]].map(([id,tabName])=>(

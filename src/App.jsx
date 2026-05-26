@@ -87,6 +87,8 @@ export default function App(){
   const[openChaList,setOpenChaList]=useState([]);       // 라루피 오픈 차수
   const[yr,setYr]=useState(new Date().getFullYear());
   const[mo,setMo]=useState(new Date().getMonth()+1);
+  const[selectedActCha,setSelectedActCha]=useState(1); // 라루피 활동 차수
+  const[savedChas,setSavedChas]=useState([]);           // 라루피 저장된 차수
   const[act,setAct]=useState(null);
   const[savMsg,setSavMsg]=useState("");
   const[saving,setSaving]=useState(false);
@@ -171,8 +173,20 @@ export default function App(){
   },[atab,prodGrade,prodYear,prodMonth,prodCha]);
 
   const loadMySaved=async uid=>{
-    const keys=await db.list(`activity:${uid}:`);
-    setSavedMonths(keys.map(k=>{const p=k.split(":");return{year:+p[2],month:+p[3]};}).sort((a,b)=>b.year-a.year||b.month-a.month));
+    if(me?.grade===G.L){
+      const keys=await db.list(`activity:${uid}:cha:`);
+      setSavedChas(keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n)));
+    } else {
+      const keys=await db.list(`activity:${uid}:`);
+      setSavedMonths(keys.map(k=>{const p=k.split(":");return{year:+p[2],month:+p[3]};}).sort((a,b)=>b.year-a.year||b.month-a.month));
+    }
+  };
+
+  const selectCha=async cha=>{
+    if(!openChaList.includes(cha))return;
+    setSelectedActCha(cha);
+    const saved=await db.get(`activity:${me.id}:cha:${cha}`);
+    setAct(saved||blankAct(me.grade));setSp("activity");
   };
   const loadMyInquiries=async uid=>setMyInquiries(await db.get(`inquiries:${uid}`)||[]);
 
@@ -535,30 +549,52 @@ export default function App(){
           </>)}
 
           {sp==="months"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📅 활동 월 선택</div>
-            <div style={card}>
-              <label style={lbl}>년도</label>
-              <select value={yr} onChange={e=>setYr(Number(e.target.value))} style={{...inp}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
-              <label style={lbl}>월</label>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:4}}>
-                {MONTHS.map(m=>{
-                  const saved=savedMonths.some(s=>s.year===yr&&s.month===m);
-                  const accessible=isMonthAccessible(yr,m);
-                  return(<button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
-                    style={{padding:"10px 0",borderRadius:10,border:`2px solid ${!accessible?"#EEE":saved?PC:BORDER}`,background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
-                    {m}월{!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
-                    {accessible&&saved&&<span style={{position:"absolute",top:4,right:4,width:6,height:6,borderRadius:3,background:PC,display:"block"}}/>}
-                  </button>);
-                })}
-              </div>
-              <div style={{fontSize:11,color:MUTED,marginTop:12}}>💡 🔒 표시된 달은 아직 오픈되지 않았습니다.</div>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>
+              {isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}
             </div>
+            {isL?(
+              <div style={card}>
+                <div style={{fontSize:13,color:MUTED,marginBottom:16}}>관리자가 오픈한 차수를 선택하세요.</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+                  {LACHAS.map(cha=>{
+                    const saved=savedChas.includes(cha);
+                    const isOpen=openChaList.includes(cha);
+                    return(<button key={cha} onClick={()=>isOpen&&selectCha(cha)}
+                      style={{padding:"22px 0",borderRadius:12,border:`2px solid ${!isOpen?"#EEE":saved?PC:BORDER}`,background:!isOpen?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!isOpen?"#CCC":saved?PC:TEXT,fontWeight:800,cursor:isOpen?"pointer":"not-allowed",fontSize:18,position:"relative",transition:"all 0.15s"}}>
+                      {cha}차
+                      {!isOpen&&<div style={{fontSize:11,color:"#CCC",fontWeight:400}}>🔒 미오픈</div>}
+                      {isOpen&&saved&&<span style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:4,background:PC,display:"block"}}/>}
+                      {isOpen&&!saved&&<div style={{fontSize:10,color:MUTED,fontWeight:400,marginTop:2}}>입력하기</div>}
+                    </button>);
+                  })}
+                </div>
+                <div style={{fontSize:11,color:MUTED,marginTop:14}}>💡 초록 점 표시된 차수는 저장된 활동이 있습니다.</div>
+              </div>
+            ):(
+              <div style={card}>
+                <label style={lbl}>년도</label>
+                <select value={yr} onChange={e=>setYr(Number(e.target.value))} style={{...inp}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
+                <label style={lbl}>월</label>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:4}}>
+                  {MONTHS.map(m=>{
+                    const saved=savedMonths.some(s=>s.year===yr&&s.month===m);
+                    const accessible=isMonthAccessible(yr,m);
+                    return(<button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
+                      style={{padding:"10px 0",borderRadius:10,border:`2px solid ${!accessible?"#EEE":saved?PC:BORDER}`,background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
+                      {m}월{!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
+                      {accessible&&saved&&<span style={{position:"absolute",top:4,right:4,width:6,height:6,borderRadius:3,background:PC,display:"block"}}/>}
+                    </button>);
+                  })}
+                </div>
+                <div style={{fontSize:11,color:MUTED,marginTop:12}}>💡 🔒 표시된 달은 아직 오픈되지 않았습니다.</div>
+              </div>
+            )}
           </>)}
 
           {sp==="activity"&&act&&(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-              <button onClick={()=>setSp("months")} style={btn("#EEE8E0",TEXT,true)}>← 월 선택</button>
-              <div style={{fontWeight:800,fontSize:16}}>{yr}년 {mo}월</div>
+              <button onClick={()=>setSp("months")} style={btn("#EEE8E0",TEXT,true)}>← {isL?"차수":"월"} 선택</button>
+              <div style={{fontWeight:800,fontSize:16}}>{isL?`${selectedActCha}차 활동`:`${yr}년 ${mo}월`}</div>
               <span style={tag(me.grade)}>{GN[me.grade]}</span>
               {act.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:"#E8F5E9",color:"#2E7D32"}}>✅ 제출완료</span>}
             </div>

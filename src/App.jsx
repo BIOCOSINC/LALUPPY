@@ -29,7 +29,7 @@ const YEARS=[2024,2025,2026,2027,2028,2029,2030];
 const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
 const BRAND={logoUrl:"/logo.png",logoText:"LALUPPY",primary:"#004638",primaryLight:"#E6F0ED"};
 
-async function compressImage(file) {
+async function compressImage(file){
   return new Promise(res=>{
     const r=new FileReader();
     r.onload=e=>{
@@ -46,8 +46,25 @@ async function compressImage(file) {
 
 function blankAct(grade){
   const virals=Array(5).fill(0).map(()=>({link:"",photo:null}));
-  if(grade===G.L) return{blogs:[{link:""},{link:""}],virals,extras:[],submitted:false};
+  if(grade===G.L)return{blogs:[{link:""},{link:""}],virals,extras:[],submitted:false};
   return{virals,extras:[],submitted:false};
+}
+
+// 오픈 달 목록 서브컴포넌트
+function OpenMonthList({grade,refreshKey}){
+  const[list,setList]=useState([]);
+  const PC=BRAND.primary,MUTED="#888",BORDER="#E8E0D5";
+  useEffect(()=>{db.get(`openMonths:${grade}`).then(d=>setList(d||[]));},[ grade,refreshKey]);
+  const del=async id=>{const next=list.filter(om=>om.id!==id);await db.set(`openMonths:${grade}`,next);setList(next);};
+  if(list.length===0)return<div style={{fontSize:12,color:MUTED,padding:"8px 0"}}>오픈된 달이 없습니다.</div>;
+  return<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+    {list.sort((a,b)=>a.year-b.year||a.month-b.month).map(om=>(
+      <div key={om.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:BRAND.primaryLight,borderRadius:8,fontSize:12,border:`1px solid ${BORDER}`}}>
+        <span style={{fontWeight:700,color:PC}}>{om.year}년 {om.month}월</span>
+        <button onClick={()=>del(om.id)} style={{background:"none",border:"none",cursor:"pointer",color:MUTED,fontSize:14,padding:0,lineHeight:1}}>×</button>
+      </div>
+    ))}
+  </div>;
 }
 
 export default function App(){
@@ -55,6 +72,16 @@ export default function App(){
     const s=document.createElement("script");
     s.src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
     document.head.appendChild(s);
+  },[]);
+  useEffect(()=>{
+    window.history.pushState(null,"",window.location.href);
+    const h=()=>window.history.pushState(null,"",window.location.href);
+    window.addEventListener("popstate",h);return()=>window.removeEventListener("popstate",h);
+  },[]);
+  useEffect(()=>{
+    const saved=sessionStorage.getItem("laluppy_user");
+    const savedView=sessionStorage.getItem("laluppy_view");
+    if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
   },[]);
 
   const[view,setView]=useState("login");
@@ -65,6 +92,7 @@ export default function App(){
   const[sp,setSp]=useState("notices");
   const[myNotices,setMyNotices]=useState([]);
   const[savedMonths,setSavedMonths]=useState([]);
+  const[openMonthsList,setOpenMonthsList]=useState([]);
   const[yr,setYr]=useState(new Date().getFullYear());
   const[mo,setMo]=useState(new Date().getMonth()+1);
   const[act,setAct]=useState(null);
@@ -83,7 +111,9 @@ export default function App(){
   const[availableProds,setAvailableProds]=useState([]);
   const[mySelection,setMySelection]=useState(null);
   const[selMsg,setSelMsg]=useState("");
-  const[monthSubmitted,setMonthSubmitted]=useState(false);
+  const[canSelectProduct,setCanSelectProduct]=useState(false);
+  const[canSelectReason,setCanSelectReason]=useState("");
+  // admin
   const[atab,setAtab]=useState("supporters");
   const[supps,setSupps]=useState([]);
   const[nlp,setNlp]=useState([]);
@@ -113,31 +143,11 @@ export default function App(){
   const[prodList,setProdList]=useState([]);
   const[newProd,setNewProd]=useState({name:"",code:""});
   const[prodMsg,setProdMsg]=useState("");
+  const[newOpenMonth,setNewOpenMonth]=useState({year:new Date().getFullYear(),month:new Date().getMonth()+2>12?1:new Date().getMonth()+2});
+  const[openRefresh,setOpenRefresh]=useState(0);
   const[excelPreview,setExcelPreview]=useState([]);
   const[excelErr,setExcelErr]=useState("");
   const[downloading,setDownloading]=useState(false);
-  const[addrExcelErr,setAddrExcelErr]=useState("");
-  const[addrExcelPreview,setAddrExcelPreview]=useState([]);
-
-  // PWA 뒤로가기/앞으로가기로 앱 꺼짐 방지
-  useEffect(()=>{
-    window.history.pushState(null,"",window.location.href);
-    const handlePop=()=>{
-      window.history.pushState(null,"",window.location.href);
-    };
-    window.addEventListener("popstate",handlePop);
-    return()=>window.removeEventListener("popstate",handlePop);
-  },[]);
-
-  // 앱 시작 시 저장된 로그인 정보 복원
-  useEffect(()=>{
-    const saved = sessionStorage.getItem("laluppy_user");
-    const savedView = sessionStorage.getItem("laluppy_view");
-    if(saved && savedView){
-      setMe(JSON.parse(saved));
-      setView(savedView);
-    }
-  },[]);
 
   useEffect(()=>{
     if(view==="admin"){
@@ -152,11 +162,12 @@ export default function App(){
       db.get(`notices:${me.grade}`).then(d=>setMyNotices(d||[]));
       loadMySaved(me.id);loadMyInquiries(me.id);
       db.get(`address:${me.id}`).then(d=>{if(d)setMyAddress(d);});
+      db.get(`openMonths:${me.grade}`).then(d=>setOpenMonthsList(d||[]));
     }
   },[me]);
 
   useEffect(()=>{
-    if(me&&sp==="product"){loadAvailableProds();loadMySelection();loadMonthSubmitted();}
+    if(me&&sp==="product"){loadAvailableProds();loadMySelection();loadCanSelect();}
   },[me,sp,selYr,selMo]);
 
   useEffect(()=>{
@@ -170,8 +181,28 @@ export default function App(){
   const loadMyInquiries=async uid=>setMyInquiries(await db.get(`inquiries:${uid}`)||[]);
   const loadAvailableProds=async()=>{if(!me)return;setAvailableProds(await db.get(`products:${me.grade}:${selYr}:${selMo}`)||[]);};
   const loadMySelection=async()=>{if(!me)return;setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);};
-  const loadMonthSubmitted=async()=>{if(!me)return;const d=await db.get(`activity:${me.id}:${selYr}:${selMo}`);setMonthSubmitted(d?.submitted||false);};
   const loadAdminProds=async()=>setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
+
+  // 선신청 후활동 로직: 마지막 신청 달의 활동이 제출됐는지 확인
+  const loadCanSelect=async()=>{
+    if(!me)return;
+    const keys=await db.list(`selection:${me.id}:`);
+    if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
+    const sels=[];
+    for(const k of keys){const s=await db.get(k);if(s)sels.push(s);}
+    sels.sort((a,b)=>b.year-a.year||b.month-a.month);
+    const last=sels[0];
+    const lastAct=await db.get(`activity:${me.id}:${last.year}:${last.month}`);
+    if(lastAct?.submitted){setCanSelectProduct(true);setCanSelectReason("");}
+    else{setCanSelectProduct(false);setCanSelectReason(`${last.year}년 ${last.month}월 활동을 먼저 제출해 주세요.`);}
+  };
+
+  // 해당 월이 활동 입력 가능한지 확인
+  const isMonthAccessible=(year,month)=>{
+    const now=new Date();const curY=now.getFullYear();const curM=now.getMonth()+1;
+    if(year<curY||(year===curY&&month<=curM))return true; // 과거·현재 달은 항상 가능
+    return openMonthsList.some(om=>om.year===year&&om.month===month); // 미래는 오픈된 달만
+  };
 
   const loadActSummary=async(year,suppList)=>{
     const list=suppList!==undefined?suppList:supps;
@@ -197,10 +228,7 @@ export default function App(){
 
   const doLogin=async()=>{
     if(adminMode){
-      if(lf.code===ADMIN_CODE){
-        setView("admin");setLerr("");
-        sessionStorage.setItem("laluppy_view","admin");
-      }
+      if(lf.code===ADMIN_CODE){setView("admin");setLerr("");sessionStorage.setItem("laluppy_view","admin");}
       else setLerr("관리자 코드가 올바르지 않습니다.");
       return;
     }
@@ -209,13 +237,13 @@ export default function App(){
     const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
     if(found){
       setMe(found);setView("supporter");setLerr("");setSp("notices");
-      sessionStorage.setItem("laluppy_user", JSON.stringify(found));
-      sessionStorage.setItem("laluppy_view", "supporter");
-    }
-    else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
+      sessionStorage.setItem("laluppy_user",JSON.stringify(found));
+      sessionStorage.setItem("laluppy_view","supporter");
+    }else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
   };
 
   const selectMonth=async(year,month)=>{
+    if(!isMonthAccessible(year,month))return;
     setYr(year);setMo(month);
     const saved=await db.get(`activity:${me.id}:${year}:${month}`);
     setAct(saved||blankAct(me.grade));setSp("activity");
@@ -225,8 +253,8 @@ export default function App(){
     const viralsWithContent=act.virals.filter(v=>v.link||v.photo);
     const missingIdx=viralsWithContent.findIndex(v=>!v.photo);
     if(missingIdx!==-1){
-      const realIdx=act.virals.findIndex((v,i)=>(v.link||v.photo)&&!v.photo);
-      setSavMsg(`⚠️ 바이럴 ${realIdx+1}번 사진이 없습니다. 사진은 필수입니다.`);
+      const realIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
+      setSavMsg(`⚠️ 바이럴 ${realIdx+1}번 사진이 없습니다.`);
       setTimeout(()=>setSavMsg(""),3000);return;
     }
     setSaving(true);
@@ -248,11 +276,12 @@ export default function App(){
   };
 
   const openPostcode=()=>{
-    if(!window.daum){alert("주소 검색 서비스를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");return;}
-    new window.daum.Postcode({oncomplete:(data)=>{setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}));}}).open();
+    if(!window.daum){alert("주소 검색 서비스를 불러오는 중입니다.");return;}
+    new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
   };
 
-  const saveProductSelection=async(prod)=>{
+  const saveProductSelection=async prod=>{
+    if(!canSelectProduct)return;
     const sel={productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
     const ok=await db.set(`selection:${me.id}:${selYr}:${selMo}`,sel);
     if(ok){setMySelection(sel);setSelMsg("제품이 선택되었습니다! ✓");}
@@ -267,9 +296,16 @@ export default function App(){
     if(ok){setProdList(list);setNewProd({name:"",code:""});setProdMsg("제품 등록 완료! ✓");}
     setTimeout(()=>setProdMsg(""),2000);
   };
-  const delProduct=async(id)=>{
-    const list=prodList.filter(p=>p.id!==id);
-    await db.set(`products:${prodGrade}:${prodYear}:${prodMonth}`,list);setProdList(list);
+  const delProduct=async id=>{const list=prodList.filter(p=>p.id!==id);await db.set(`products:${prodGrade}:${prodYear}:${prodMonth}`,list);setProdList(list);};
+
+  const addOpenMonth=async()=>{
+    const list=await db.get(`openMonths:${prodGrade}`)||[];
+    if(list.find(om=>om.year===newOpenMonth.year&&om.month===newOpenMonth.month)){setProdMsg("이미 오픈된 달입니다.");setTimeout(()=>setProdMsg(""),2000);return;}
+    const next=[...list,{id:`om${Date.now()}`,year:newOpenMonth.year,month:newOpenMonth.month}];
+    await db.set(`openMonths:${prodGrade}`,next);
+    setOpenRefresh(r=>r+1);
+    setProdMsg(`${GN[prodGrade]} ${newOpenMonth.year}년 ${newOpenMonth.month}월 오픈 완료! ✓`);
+    setTimeout(()=>setProdMsg(""),2000);
   };
 
   const uploadPhoto=async(setter,file)=>{if(!file)return;setter(await compressImage(file));};
@@ -347,6 +383,16 @@ export default function App(){
     setTimeout(()=>setReplyMsg(""),2500);
   };
 
+  const downloadTemplate=()=>{
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([
+      ["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],
+      ["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]
+    ]);
+    ws["!cols"]=[{wch:8},{wch:12},{wch:14},{wch:12},{wch:16},{wch:10},{wch:30},{wch:20}];
+    XLSX.utils.book_append_sheet(wb,ws,"써포터즈목록");XLSX.writeFile(wb,"써포터즈_등록_양식.xlsx");
+  };
+
   const handleExcelUpload=async file=>{
     setExcelErr("");setExcelPreview([]);
     try{
@@ -354,71 +400,25 @@ export default function App(){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
       const parsed=rows.slice(1).filter(r=>r[0]||r[1]||r[2])
-        .map(r=>({
-          gen:String(r[0]||"").trim(),
-          nick:String(r[1]||"").trim(),
-          phone:String(r[2]||"").trim(),
-          name:String(r[3]||"").trim(),
-          deliveryPhone:String(r[4]||"").trim(),
-          zonecode:String(r[5]||"").trim(),
-          address:String(r[6]||"").trim(),
-          addressDetail:String(r[7]||"").trim()
-        }))
+        .map(r=>({gen:String(r[0]||"").trim(),nick:String(r[1]||"").trim(),phone:String(r[2]||"").trim(),name:String(r[3]||"").trim(),deliveryPhone:String(r[4]||"").trim(),zonecode:String(r[5]||"").trim(),address:String(r[6]||"").trim(),addressDetail:String(r[7]||"").trim()}))
         .filter(r=>r.gen&&r.nick&&r.phone);
       if(!parsed.length){setExcelErr("유효한 데이터가 없습니다.");return;}
       setExcelPreview(parsed);
     }catch{setExcelErr("파일을 읽을 수 없습니다.");}
   };
+
   const confirmExcelUpload=async()=>{
     const existing=await db.get("supporters")||[];let added=0;
     for(const p of excelPreview){
       if(!existing.find(s=>s.gen===p.gen&&s.nick===p.nick)){
-        const newSupp={id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")};
-        existing.push(newSupp);
-        if(p.address){
-          await db.set(`address:${newSupp.id}`,{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail});
-        }
+        const ns={id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")};
+        existing.push(ns);
+        if(p.address)await db.set(`address:${ns.id}`,{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail});
         added++;
       }
     }
     await db.set("supporters",existing);setSupps(existing);setExcelPreview([]);
     setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
-  };
-  const downloadTemplate=()=>{
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([["기수","닉네임","전화번호끝자리"],["1기","예시닉네임","1234"]]);
-    XLSX.utils.book_append_sheet(wb,ws,"써포터즈목록");XLSX.writeFile(wb,"써포터즈_등록_양식.xlsx");
-  };
-
-  const handleAddrExcelUpload=async file=>{
-    setAddrExcelErr("");setAddrExcelPreview([]);
-    try{
-      const ab=await file.arrayBuffer();const wb=XLSX.read(ab,{type:"array"});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
-      const parsed=rows.slice(1).filter(r=>r[0]||r[1])
-        .map(r=>({nick:String(r[0]||"").trim(),gen:String(r[1]||"").trim(),zonecode:String(r[2]||"").trim(),address:String(r[3]||"").trim(),addressDetail:String(r[4]||"").trim()}))
-        .filter(r=>r.nick&&r.address);
-      if(!parsed.length){setAddrExcelErr("유효한 데이터가 없습니다.");return;}
-      setAddrExcelPreview(parsed);
-    }catch{setAddrExcelErr("파일을 읽을 수 없습니다.");}
-  };
-  const confirmAddrUpload=async()=>{
-    const list=await db.get("supporters")||[];let updated=0;
-    for(const p of addrExcelPreview){
-      const s=list.find(s=>s.nick===p.nick&&s.gen===p.gen);
-      if(s){await db.set(`address:${s.id}`,{zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail});updated++;}
-    }
-    setAddrExcelPreview([]);setAddrExcelErr(`${updated}명 주소 업데이트 완료!`);setTimeout(()=>setAddrExcelErr(""),3000);
-  };
-  const downloadAddrTemplate=()=>{
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([
-      ["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],
-      ["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]
-    ]);
-    ws["!cols"]=[{wch:8},{wch:12},{wch:14},{wch:12},{wch:16},{wch:10},{wch:30},{wch:20}];
-    XLSX.utils.book_append_sheet(wb,ws,"주소목록");XLSX.writeFile(wb,"주소_업로드_양식.xlsx");
   };
 
   const downloadActivityExcel=async()=>{
@@ -461,7 +461,7 @@ export default function App(){
 
   const Logo=({dark})=>BRAND.logoUrl
     ?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:dark?32:28,objectFit:"contain",filter:dark?"brightness(0) invert(1)":"none"}}/>
-    :<span style={{fontFamily:"'Apple SD Gothic Neo','Noto Sans KR',sans-serif",fontWeight:900,fontSize:20,letterSpacing:"0.05em",color:dark?"#fff":PC}}>{BRAND.logoText}</span>;
+    :<span style={{fontFamily:"'Apple SD Gothic Neo','Noto Sans KR',sans-serif",fontWeight:900,fontSize:20,color:dark?"#fff":PC}}>{BRAND.logoText}</span>;
 
   const photoField=(src,setter,required=false)=>(
     <div style={{marginTop:6,marginBottom:4}}>
@@ -479,11 +479,13 @@ export default function App(){
     </div>
   );
 
-  if(view==="login") return(
+  // ── LOGIN
+  if(view==="login")return(
     <div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{fontFamily:"'Apple SD Gothic Neo','Noto Sans KR',sans-serif",fontWeight:900,fontSize:32,color:PC,letterSpacing:"0.05em",marginBottom:8}}>{BRAND.logoText}</div>
+          {BRAND.logoUrl?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:56,objectFit:"contain",marginBottom:8}}/>
+            :<div style={{fontWeight:900,fontSize:32,color:PC,marginBottom:8}}>{BRAND.logoText}</div>}
           <div style={{fontSize:13,color:MUTED}}>써포터즈 활동 관리 플랫폼</div>
         </div>
         <div style={{...card,padding:24}}>
@@ -509,6 +511,7 @@ export default function App(){
     </div>
   );
 
+  // ── SUPPORTER
   if(view==="supporter"&&me){
     const isL=me.grade===G.L;
     return(
@@ -528,7 +531,10 @@ export default function App(){
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📢 공지사항</div>
             {myNotices.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:40}}>등록된 공지사항이 없습니다.</div>
               :myNotices.map(n=>(<div key={n.id} style={card}><div style={{fontWeight:700,marginBottom:6}}>{n.title}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{n.content}</div><div style={{fontSize:11,color:MUTED,marginTop:8}}>{n.date}</div></div>))}
-            <button onClick={()=>setSp("months")} style={{...btn(PC),width:"100%",marginTop:4}}>활동 내역 입력하기 →</button>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
+              <button onClick={()=>setSp("product")} style={{...btn(BRAND.primaryLight,PC),width:"100%",fontSize:15,padding:"14px"}}>🛍️ 제품 신청하기 →</button>
+              <button onClick={()=>setSp("months")} style={{...btn(PC),width:"100%"}}>📝 활동 내역 입력하기 →</button>
+            </div>
           </>)}
 
           {sp==="months"&&(<>
@@ -538,12 +544,20 @@ export default function App(){
               <select value={yr} onChange={e=>setYr(Number(e.target.value))} style={{...inp}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
               <label style={lbl}>월</label>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:4}}>
-                {MONTHS.map(m=>{const saved=savedMonths.some(s=>s.year===yr&&s.month===m);return(
-                  <button key={m} onClick={()=>selectMonth(yr,m)} style={{padding:"12px 0",borderRadius:10,border:`2px solid ${saved?PC:BORDER}`,background:saved?BRAND.primaryLight:CARD,color:saved?PC:TEXT,fontWeight:700,cursor:"pointer",fontSize:14,position:"relative"}}>
-                    {m}월{saved&&<span style={{position:"absolute",top:5,right:5,width:6,height:6,borderRadius:3,background:PC,display:"block"}}/>}
-                  </button>
-                );})}
+                {MONTHS.map(m=>{
+                  const saved=savedMonths.some(s=>s.year===yr&&s.month===m);
+                  const accessible=isMonthAccessible(yr,m);
+                  return(
+                    <button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
+                      style={{padding:"10px 0",borderRadius:10,border:`2px solid ${!accessible?"#EEE":saved?PC:BORDER}`,background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
+                      {m}월
+                      {!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
+                      {accessible&&saved&&<span style={{position:"absolute",top:4,right:4,width:6,height:6,borderRadius:3,background:PC,display:"block"}}/>}
+                    </button>
+                  );
+                })}
               </div>
+              <div style={{fontSize:11,color:MUTED,marginTop:12}}>💡 🔒 표시된 달은 아직 오픈되지 않았습니다.</div>
             </div>
           </>)}
 
@@ -593,13 +607,26 @@ export default function App(){
             </div>
             <div style={{display:"flex",gap:10,position:"sticky",bottom:16}}>
               <button onClick={()=>doSave(false)} disabled={saving} style={{...btn("#EEE8E0",TEXT),flex:1,opacity:saving?0.7:1}}>💾 임시저장</button>
-              <button onClick={()=>doSave(true)} disabled={saving} style={{...btn(PC),flex:2,boxShadow:"0 4px 16px rgba(0,0,0,0.15)",opacity:saving?0.7:1}}>✅ 최종 제출</button>
+              <button onClick={()=>doSave(true)} disabled={saving||act.submitted}
+                style={{...btn(act.submitted?"#CCC":PC),flex:2,opacity:saving?0.7:1,cursor:act.submitted?"not-allowed":"pointer",boxShadow:act.submitted?"none":"0 4px 16px rgba(0,0,0,0.15)"}}>
+                {act.submitted?"✅ 제출완료":"✅ 최종 제출"}
+              </button>
             </div>
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{savMsg}</div>}
           </>)}
 
           {sp==="product"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
+            {!canSelectProduct?(
+              <div style={{padding:"12px 14px",background:"#FDECEA",borderRadius:10,marginBottom:14,fontSize:13,color:"#C0392B",fontWeight:600}}>
+                ⚠️ {canSelectReason}
+                <div style={{marginTop:8}}><button onClick={()=>setSp("months")} style={btn("#C0392B",undefined,true)}>활동 입력하러 가기 →</button></div>
+              </div>
+            ):(
+              <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
+                ✅ 제품 신청이 가능합니다!
+              </div>
+            )}
             <div style={card}>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 <select value={selYr} onChange={e=>setSelYr(+e.target.value)} style={{...sel,flex:1}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
@@ -612,68 +639,47 @@ export default function App(){
               </div>)}
               {availableProds.length===0
                 ?<div style={{textAlign:"center",color:MUTED,padding:32,fontSize:13}}>이번 달 선택 가능한 제품이 없습니다.</div>
-                :<>
-                  {!monthSubmitted&&(
-                    <div style={{padding:"12px 14px",background:"#FEF6E4",borderRadius:10,marginBottom:14,fontSize:13,color:"#B7860B",fontWeight:600}}>
-                      ⚠️ 활동 내역을 <b>최종 제출</b>해야 제품을 신청할 수 있습니다.
-                    </div>
-                  )}
-                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                    {availableProds.map(p=>{
-                      const isSelected=mySelection?.productId===p.id;
-                      const disabled=!monthSubmitted;
-                      return(<div key={p.id}
-                        onClick={()=>!disabled&&saveProductSelection(p)}
-                        style={{padding:"14px 16px",borderRadius:10,border:`2px solid ${isSelected?PC:BORDER}`,background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled?0.6:1}}>
-                        <div>
-                          <div style={{fontWeight:700,fontSize:14,color:disabled?MUTED:TEXT}}>{p.name}</div>
-                          <div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div>
-                        </div>
-                        {isSelected?<span style={{color:PC,fontWeight:700,fontSize:18}}>✓</span>
-                          :disabled?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>신청불가</span>
-                          :<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
-                      </div>);
-                    })}
-                  </div>
-                </>}
+                :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {availableProds.map(p=>{
+                    const isSelected=mySelection?.productId===p.id;
+                    const disabled=!canSelectProduct;
+                    return(<div key={p.id} onClick={()=>!disabled&&saveProductSelection(p)}
+                      style={{padding:"14px 16px",borderRadius:10,border:`2px solid ${isSelected?PC:BORDER}`,background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled?0.6:1}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:14,color:disabled?MUTED:TEXT}}>{p.name}</div>
+                        <div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div>
+                      </div>
+                      {isSelected?<span style={{color:PC,fontWeight:700,fontSize:18}}>✓</span>
+                        :disabled?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>신청불가</span>
+                        :<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
+                    </div>);
+                  })}
+                </div>}
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:PC}}>{selMsg}</div>}
             </div>
           </>)}
 
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
-
-            {/* 저장된 주소 보기 모드 */}
             {myAddress.address&&!addrEditMode?(
               <div style={card}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                   <div style={{fontWeight:700,fontSize:14}}>등록된 배송 정보</div>
                   <button onClick={()=>setAddrEditMode(true)} style={btn(BRAND.primaryLight,PC,true)}>✏️ 수정하기</button>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {[
-                    ["수령인",myAddress.name],
-                    ["연락처",myAddress.phone],
-                    ["우편번호",myAddress.zonecode],
-                    ["주소",myAddress.address],
-                    ["상세주소",myAddress.addressDetail||"-"]
-                  ].map(([label,value])=>(
-                    <div key={label} style={{display:"flex",gap:12,padding:"10px 14px",background:"#F9F6F2",borderRadius:8}}>
-                      <span style={{fontSize:12,color:MUTED,minWidth:60,fontWeight:700}}>{label}</span>
-                      <span style={{fontSize:13,fontWeight:500}}>{value}</span>
-                    </div>
-                  ))}
-                </div>
+                {[["수령인",myAddress.name],["연락처",myAddress.phone],["우편번호",myAddress.zonecode],["주소",myAddress.address],["상세주소",myAddress.addressDetail||"-"]].map(([label,value])=>(
+                  <div key={label} style={{display:"flex",gap:12,padding:"10px 14px",background:"#F9F6F2",borderRadius:8,marginBottom:8}}>
+                    <span style={{fontSize:12,color:MUTED,minWidth:60,fontWeight:700}}>{label}</span>
+                    <span style={{fontSize:13,fontWeight:500}}>{value}</span>
+                  </div>
+                ))}
               </div>
             ):(
-              /* 입력/수정 모드 */
               <div style={card}>
-                {addrEditMode&&(
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div style={{fontWeight:700,fontSize:14}}>배송 정보 수정</div>
-                    <button onClick={()=>setAddrEditMode(false)} style={btn("#EEE8E0",TEXT,true)}>← 취소</button>
-                  </div>
-                )}
+                {addrEditMode&&(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{fontWeight:700,fontSize:14}}>배송 정보 수정</div>
+                  <button onClick={()=>setAddrEditMode(false)} style={btn("#EEE8E0",TEXT,true)}>← 취소</button>
+                </div>)}
                 {!addrEditMode&&<div style={{fontSize:13,color:MUTED,marginBottom:14}}>제품 배송을 위한 수령인 정보와 주소를 등록해 주세요.</div>}
                 <label style={lbl}>수령인 이름 *</label>
                 <input style={inp} placeholder="실명 입력" value={myAddress.name||""} onChange={e=>setMyAddress(a=>({...a,name:e.target.value}))}/>
@@ -687,7 +693,7 @@ export default function App(){
                 <input style={inp} placeholder="기본 주소" value={myAddress.address} readOnly/>
                 <label style={lbl}>상세 주소</label>
                 <input style={inp} placeholder="동/호수 등 상세 주소 입력" value={myAddress.addressDetail} onChange={e=>setMyAddress(a=>({...a,addressDetail:e.target.value}))}/>
-                <button onClick={async()=>{await saveAddress();setAddrEditMode(false);}} disabled={addrSaving} style={{...btn(PC),width:"100%",opacity:addrSaving?0.7:1}}>
+                <button onClick={async()=>{await saveAddress();if(myAddress.address)setAddrEditMode(false);}} disabled={addrSaving} style={{...btn(PC),width:"100%",opacity:addrSaving?0.7:1}}>
                   {addrSaving?"저장 중...":"주소 저장"}
                 </button>
                 {addrMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{addrMsg}</div>}
@@ -723,7 +729,8 @@ export default function App(){
     );
   }
 
-  if(view==="admin") return(
+  // ── ADMIN
+  if(view==="admin")return(
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
       <div style={{background:PC,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
@@ -753,7 +760,7 @@ export default function App(){
               <div style={{fontWeight:700,fontSize:15}}>📊 회원 엑셀 일괄 등록</div>
               <button onClick={downloadTemplate} style={btn(BRAND.primaryLight,PC,true)}>📥 양식</button>
             </div>
-            <div style={{fontSize:12,color:MUTED,marginBottom:10}}>기수·닉네임·전화번호 필수 / 주소 정보는 선택 입력</div>
+            <div style={{fontSize:12,color:MUTED,marginBottom:10}}>기수·닉네임·전화번호 필수 / 주소 선택</div>
             <label style={{display:"block",border:`1.5px dashed ${BORDER}`,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:MUTED,background:"#FAFAFA",marginBottom:8}}>
               📂 엑셀 파일 선택<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleExcelUpload(e.target.files[0])}/>
             </label>
@@ -761,10 +768,7 @@ export default function App(){
             {excelPreview.length>0&&(<>
               <div style={{maxHeight:140,overflowY:"auto",border:`1px solid ${BORDER}`,borderRadius:8,marginBottom:10}}>
                 {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:`1px solid ${BORDER}`,fontSize:13,display:"flex",gap:10}}>
-                  <span style={{color:MUTED}}>{i+1}</span>
-                  <span style={{fontWeight:700}}>{p.gen}</span>
-                  <span>{p.nick}</span>
-                  <span style={{color:MUTED}}>{p.phone}</span>
+                  <span style={{color:MUTED}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:MUTED}}>{p.phone}</span>
                   {p.address&&<span style={{color:PC,fontSize:11}}>📦 주소있음</span>}
                 </div>))}
               </div>
@@ -812,21 +816,39 @@ export default function App(){
         </>)}
 
         {atab==="products"&&(<>
+          {/* 등급·년월 선택 */}
           <div style={card}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>🛍️ 제품 관리</div>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
               {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
                 <button key={g} onClick={()=>setProdGrade(g)} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:prodGrade===g?CARD:"transparent",color:prodGrade===g?GC[g]:MUTED,boxShadow:prodGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>
               ))}
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:14}}>
+            <div style={{display:"flex",gap:8}}>
               <select value={prodYear} onChange={e=>setProdYear(+e.target.value)} style={{...sel,flex:1}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
               <select value={prodMonth} onChange={e=>setProdMonth(+e.target.value)} style={{...sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
             </div>
+          </div>
+
+          {/* 활동 오픈 달 설정 */}
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>🔓 활동 오픈 달 설정</div>
+            <div style={{fontSize:12,color:MUTED,marginBottom:14}}>오픈된 달만 써포터즈가 미래 달 활동을 입력할 수 있습니다.<br/>과거 달은 항상 입력 가능합니다.</div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+              <select value={newOpenMonth.year} onChange={e=>setNewOpenMonth(m=>({...m,year:+e.target.value}))} style={{...sel,flex:1}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
+              <select value={newOpenMonth.month} onChange={e=>setNewOpenMonth(m=>({...m,month:+e.target.value}))} style={{...sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
+              <button onClick={addOpenMonth} style={{...btn(PC,undefined,true),padding:"8px 14px",whiteSpace:"nowrap"}}>🔓 오픈</button>
+            </div>
+            {prodMsg&&<div style={{fontSize:13,color:PC,marginBottom:10,fontWeight:700}}>{prodMsg}</div>}
+            <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>현재 오픈된 달 — {GN[prodGrade]}</div>
+            <OpenMonthList grade={prodGrade} refreshKey={openRefresh}/>
+          </div>
+
+          {/* 제품 등록 */}
+          <div style={card}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>🛍️ {GN[prodGrade]} · {prodYear}년 {prodMonth}월 제품</div>
             <label style={lbl}>제품명</label><input style={inp} placeholder="제품명 입력" value={newProd.name} onChange={e=>setNewProd(p=>({...p,name:e.target.value}))}/>
             <label style={lbl}>제품 코드</label><input style={inp} placeholder="제품 코드 입력" value={newProd.code} onChange={e=>setNewProd(p=>({...p,code:e.target.value}))}/>
             <button onClick={addProduct} style={{...btn(PC),width:"100%"}}>➕ 제품 추가</button>
-            {prodMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,color:PC}}>{prodMsg}</div>}
           </div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{GN[prodGrade]} · {prodYear}년 {prodMonth}월 제품 ({prodList.length}개)</div>
           {prodList.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:24,fontSize:13}}>등록된 제품이 없습니다.</div>

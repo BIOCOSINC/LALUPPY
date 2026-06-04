@@ -43,7 +43,6 @@ function blankAct(grade){
   return{virals,extras:[],submitted:false};
 }
 
-// 오픈 달 목록 서브컴포넌트 (라루피시크릿용)
 function OpenMonthList({grade,refreshKey}){
   const[list,setList]=useState([]);
   const PC=BRAND.primary,MUTED="#888",BORDER="#E8E0D5";
@@ -108,11 +107,7 @@ export default function App(){
   const[selMsg,setSelMsg]=useState("");
   const[canSelectProduct,setCanSelectProduct]=useState(false);
   const[canSelectReason,setCanSelectReason]=useState("");
-
-  // ── [신규] 제품 최종 제출 확인 팝업
-  const[selConfirmProd,setSelConfirmProd]=useState(null); // 확인 팝업에 표시할 제품
-
-  // admin
+  const[selConfirmProd,setSelConfirmProd]=useState(null);
   const[atab,setAtab]=useState("supporters");
   const[supps,setSupps]=useState([]);
   const[nlp,setNlp]=useState([]);
@@ -148,30 +143,39 @@ export default function App(){
   const[excelPreview,setExcelPreview]=useState([]);
   const[excelErr,setExcelErr]=useState("");
   const[downloading,setDownloading]=useState(false);
-
-  // ── [신규] 지난달 상품 불러오기 로딩 상태
   const[loadingPrevProd,setLoadingPrevProd]=useState(false);
 
   useEffect(()=>{
     if(view==="admin"){
       db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
-      db.get("notices:laroupi").then(d=>setNlp(d||[]));
-      db.get("notices:laroupisecret").then(d=>setNsc(d||[]));
+      // 공지 병렬 로드
+      Promise.all([db.get("notices:laroupi"),db.get("notices:laroupisecret")]).then(([lp,sc])=>{setNlp(lp||[]);setNsc(sc||[]);});
     }
   },[view]);
 
   useEffect(()=>{
     if(me){
-      db.get(`notices:${me.grade}`).then(d=>setMyNotices(d||[]));
-      loadMySaved(me.id);loadMyInquiries(me.id);
-      db.get(`address:${me.id}`).then(d=>{if(d)setMyAddress(d);});
-      if(me.grade===G.L) db.get(`openCha:laroupi`).then(d=>setOpenChaList(d||[]));
-      else db.get(`openMonths:${me.grade}`).then(d=>setOpenMonthsList(d||[]));
+      // 로그인 후 초기 데이터 병렬 로드
+      Promise.all([
+        db.get(`notices:${me.grade}`),
+        db.get(`address:${me.id}`),
+        me.grade===G.L ? db.get(`openCha:laroupi`) : db.get(`openMonths:${me.grade}`)
+      ]).then(([notices,addr,openData])=>{
+        setMyNotices(notices||[]);
+        if(addr) setMyAddress(addr);
+        if(me.grade===G.L) setOpenChaList(openData||[]);
+        else setOpenMonthsList(openData||[]);
+      });
+      loadMySaved(me.id);
+      loadMyInquiries(me.id);
     }
   },[me]);
 
   useEffect(()=>{
-    if(me&&sp==="product"){loadAvailableProds();loadMySelection();loadCanSelect();}
+    if(me&&sp==="product"){
+      // 제품탭 진입 시 병렬 로드
+      Promise.all([loadAvailableProds(),loadMySelection(),loadCanSelect()]);
+    }
   },[me,sp,selectedCha,selYr,selMo]);
 
   useEffect(()=>{
@@ -213,6 +217,7 @@ export default function App(){
     else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
   };
 
+  // ── 병렬 처리 최적화: loadCanSelect
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
@@ -220,25 +225,24 @@ export default function App(){
       if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
       const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
       const lastCha=Math.max(...chaNums);
-      const lastSel=await db.get(`selection:${me.id}:cha:${lastCha}`);
+      const[lastSel,actKeys]=await Promise.all([
+        db.get(`selection:${me.id}:cha:${lastCha}`),
+        db.list(`activity:${me.id}:`)
+      ]);
       if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
       const{selYear,selMonth}=lastSel;
-      const actKeys=await db.list(`activity:${me.id}:`);
-      let hasSubmitted=false;
-      for(const k of actKeys){
-        const p=k.split(":");const aY=+p[2],aM=+p[3];
-        if(aY>selYear||(aY===selYear&&aM>=selMonth)){
-          const a=await db.get(k);if(a?.submitted){hasSubmitted=true;break;}
-        }
-      }
+      const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
+      // 관련 활동 병렬 로드
+      const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
+      const hasSubmitted=acts.some(a=>a?.submitted);
       if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
       else{setCanSelectProduct(false);setCanSelectReason(`${lastCha}차 신청 후 활동을 먼저 제출해 주세요.`);}
     } else {
       const keys=await db.list(`selection:${me.id}:`);
       const filtered=keys.filter(k=>!k.includes(":cha:"));
       if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const sels=[];
-      for(const k of filtered){const s=await db.get(k);if(s)sels.push(s);}
+      // 선택 목록 병렬 로드
+      const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
       sels.sort((a,b)=>b.year-a.year||b.month-a.month);
       const last=sels[0];
       const lastAct=await db.get(`activity:${me.id}:${last.year}:${last.month}`);
@@ -253,21 +257,30 @@ export default function App(){
     return openMonthsList.some(om=>om.year===year&&om.month===month);
   };
 
+  // ── 병렬 처리 최적화: loadActSummary (핵심 개선)
   const loadActSummary=async(year,suppList)=>{
     const list=suppList!==undefined?suppList:supps;
     if(!list.length)return;
     setLoadingSum(true);
-    const summary={};
-    for(const s of list){
+    // 모든 써포터즈 병렬 처리
+    const entries=await Promise.all(list.map(async s=>{
       const keys=await db.list(`activity:${s.id}:${year}:`);
-      summary[s.id]={};
-      for(const k of keys){
-        const d=await db.get(k);
-        if(d){const month=+k.split(":")[3];const bc=(d.blogs||[]).filter(b=>b.link).length;const vc=(d.virals||[]).filter(v=>v.link||v.photo).length;const ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
-          summary[s.id][month]={blogs:bc,virals:vc,extras:ec,total:bc+vc+ec,submitted:d.submitted||false};}
-      }
-    }
-    setActSummary(summary);setLoadingSum(false);
+      // 각 써포터즈의 활동도 병렬 로드
+      const acts=await Promise.all(keys.map(k=>db.get(k)));
+      const monthData={};
+      acts.forEach((d,i)=>{
+        if(d){
+          const month=+keys[i].split(":")[3];
+          const bc=(d.blogs||[]).filter(b=>b.link).length;
+          const vc=(d.virals||[]).filter(v=>v.link||v.photo).length;
+          const ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
+          monthData[month]={blogs:bc,virals:vc,extras:ec,total:bc+vc+ec,submitted:d.submitted||false};
+        }
+      });
+      return[s.id,monthData];
+    }));
+    setActSummary(Object.fromEntries(entries));
+    setLoadingSum(false);
   };
 
   const doLogin=async()=>{
@@ -316,13 +329,11 @@ export default function App(){
     new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
   };
 
-  // ── [신규] 제품 선택 확인 팝업 열기 (기존 saveProductSelection 대체)
   const handleSelectProduct=prod=>{
     if(!canSelectProduct)return;
     setSelConfirmProd(prod);
   };
 
-  // ── [신규] 최종 제출 확정
   const confirmProductSelection=async()=>{
     const prod=selConfirmProd;
     if(!prod)return;
@@ -351,7 +362,6 @@ export default function App(){
     const list=prodList.filter(p=>p.id!==id);await db.set(key,list);setProdList(list);
   };
 
-  // ── [신규] 지난달 상품 불러오기
   const loadPrevMonthProds=async()=>{
     setLoadingPrevProd(true);
     let prevYear=prodYear,prevMonth=prodMonth-1;
@@ -359,7 +369,6 @@ export default function App(){
     const key=prodGrade===G.L?`products:laroupi:cha:${prodCha-1}`:`products:${prodGrade}:${prevYear}:${prevMonth}`;
     const prev=await db.get(key)||[];
     if(prev.length===0){setProdMsg("지난 기간 등록된 제품이 없습니다.");setTimeout(()=>setProdMsg(""),2500);setLoadingPrevProd(false);return;}
-    // 기존 목록과 병합 (중복 코드 제외)
     const currentList=[...prodList];
     let added=0;
     for(const p of prev){
@@ -431,16 +440,25 @@ export default function App(){
     setNf({title:"",content:""});setNmsg("등록 완료! ✓");setTimeout(()=>setNmsg(""),2000);
   };
   const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set(`notices:${grade}`,list);grade===G.L?setNlp(list):setNsc(list);};
+
+  // ── 병렬 처리 최적화: openSuppActs
   const openSuppActs=async supp=>{
-    setViewSupp(supp);setLoadingVA(true);const keys=await db.list(`activity:${supp.id}:`);const acts=[];
-    for(const k of keys){const d=await db.get(k);if(d)acts.push(d);}
-    acts.sort((a,b)=>b.year-a.year||b.month-a.month);setViewActs(acts);setLoadingVA(false);
+    setViewSupp(supp);setLoadingVA(true);
+    const keys=await db.list(`activity:${supp.id}:`);
+    const acts=(await Promise.all(keys.map(k=>db.get(k)))).filter(Boolean);
+    acts.sort((a,b)=>b.year-a.year||b.month-a.month);
+    setViewActs(acts);setLoadingVA(false);
   };
+
+  // ── 병렬 처리 최적화: loadAllInquiries
   const loadAllInquiries=async()=>{
-    setLoadingIq(true);const list=await db.get("supporters")||[];const result=[];
-    for(const s of list){const iqs=await db.get(`inquiries:${s.id}`)||[];iqs.forEach(iq=>result.push({...iq,suppId:s.id,suppName:`${s.gen} · ${s.nick}`,grade:s.grade}));}
-    result.sort((a,b)=>b.id.localeCompare(a.id));setAllInquiries(result);setLoadingIq(false);
+    setLoadingIq(true);
+    const list=await db.get("supporters")||[];
+    const allIqs=await Promise.all(list.map(s=>db.get(`inquiries:${s.id}`).then(iqs=>(iqs||[]).map(iq=>({...iq,suppId:s.id,suppName:`${s.gen} · ${s.nick}`,grade:s.grade})))));
+    const result=allIqs.flat().sort((a,b)=>b.id.localeCompare(a.id));
+    setAllInquiries(result);setLoadingIq(false);
   };
+
   const sendReply=async()=>{
     if(!replyText.trim()){setReplyMsg("답변 내용을 입력해 주세요.");return;}
     const iqs=await db.get(`inquiries:${selInquiry.suppId}`)||[];
@@ -469,89 +487,113 @@ export default function App(){
   };
   const confirmExcelUpload=async()=>{
     const existing=await db.get("supporters")||[];let added=0;
-    for(const p of excelPreview){
-      if(!existing.find(s=>s.gen===p.gen&&s.nick===p.nick)){
-        const ns={id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")};
-        existing.push(ns);if(p.address)await db.set(`address:${ns.id}`,{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail});added++;
-      }
-    }
-    await db.set("supporters",existing);setSupps(existing);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
+    const newMembers=excelPreview.filter(p=>!existing.find(s=>s.gen===p.gen&&s.nick===p.nick))
+      .map(p=>({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
+    // 주소 병렬 저장
+    await Promise.all(newMembers.map(ns=>ns._addr?db.set(`address:${ns.id}`,ns._addr):Promise.resolve()));
+    const clean=newMembers.map(({_addr,...rest})=>rest);
+    added=clean.length;
+    const next=[...existing,...clean];
+    await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
   };
 
+  // ── 병렬 처리 최적화: downloadActivityExcel
   const downloadActivityExcel=async()=>{
     setDownloading(true);const wb=XLSX.utils.book_new();
     const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     const extra=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
-    for(const s of supps){
-      const grade=GN[s.grade];const addr=await db.get(`address:${s.id}`)||{};
-      const keys=await db.list(`activity:${s.id}:`);
-      for(const k of keys.sort()){
-        const d=await db.get(k);if(!d)continue;
+
+    // 써포터즈별 데이터 병렬 수집
+    await Promise.all(supps.map(async s=>{
+      const grade=GN[s.grade];
+      const[addr,keys]=await Promise.all([
+        db.get(`address:${s.id}`),
+        db.list(`activity:${s.id}:`)
+      ]);
+      const addrData=addr||{};
+      // 활동 데이터 병렬 로드
+      const actData=await Promise.all(keys.sort().map(async k=>{
+        const d=await db.get(k);
+        return{k,d};
+      }));
+      // 선택 정보 병렬 로드
+      const selKeys=s.grade===G.L?await db.list(`selection:${s.id}:cha:`):[];
+      const selDatas=await Promise.all(selKeys.map(ck=>db.get(ck)));
+      const selMap={};
+      selDatas.forEach((cs,i)=>{if(cs)selMap[`${cs.selYear}_${cs.selMonth}`]={productName:cs.productName,productCode:cs.productCode,cha:`${cs.cha}차`};});
+
+      for(const{k,d} of actData){
+        if(!d)continue;
         const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
         let selInfo={productName:"",productCode:"",cha:""};
         if(s.grade===G.L){
-          const chaKeys=await db.list(`selection:${s.id}:cha:`);
-          for(const ck of chaKeys){const cs=await db.get(ck);if(cs&&cs.selYear===d.year&&cs.selMonth===d.month){selInfo={productName:cs.productName,productCode:cs.productCode,cha:`${cs.cha}차`};break;}}
+          selInfo=selMap[`${d.year}_${d.month}`]||selInfo;
         } else {
           const sel=await db.get(`selection:${s.id}:${d.year}:${d.month}`);
           if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};
         }
-        sum.push([s.gen,s.nick,grade,addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",d.year,d.month,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",addrData.address||"",addrData.addressDetail||"",d.year,d.month,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
         (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,d.year,d.month,i+1,b.link]);});
         (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,d.year,d.month,i+1,v.link||"",v.photo?"O":"X"]);});
         (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,d.year,d.month,i+1,e.link||"",e.photo?"O":"X"]);});
       }
-    }
+    }));
+
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data])=>{const ws=XLSX.utils.aoa_to_sheet(data);ws["!cols"]=Array(data[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,name);});
-    XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);setDownloading(false);
+    XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
+    setDownloading(false);
   };
 
-  // ── [신규] 신청상품 취합 엑셀 다운로드
+  // ── 병렬 처리 최적화: downloadSelectionExcel
   const downloadSelectionExcel=async()=>{
     setDownloading(true);
     const wb=XLSX.utils.book_new();
-    // 라루피: 차수별 시트
-    for(const cha of LACHAS){
+    const laroupiSupps=supps.filter(s=>s.grade===G.L);
+    const secretSupps=supps.filter(s=>s.grade===G.S);
+
+    // 라루피: 차수별 병렬 처리
+    await Promise.all(LACHAS.map(async cha=>{
       const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","차수","제품명","제품코드","신청일시"]];
-      for(const s of supps.filter(s=>s.grade===G.L)){
-        const sel=await db.get(`selection:${s.id}:cha:${cha}`);
-        if(!sel)continue;
-        const addr=await db.get(`address:${s.id}`)||{};
-        rows.push([s.gen,s.nick,GN[s.grade],addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",`${cha}차`,sel.productName,sel.productCode,`${sel.selYear||""}년 ${sel.selMonth||""}월`]);
-      }
+      await Promise.all(laroupiSupps.map(async s=>{
+        const[sel,addr]=await Promise.all([db.get(`selection:${s.id}:cha:${cha}`),db.get(`address:${s.id}`)]);
+        if(!sel)return;
+        const a=addr||{};
+        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",`${cha}차`,sel.productName,sel.productCode,`${sel.selYear||""}년 ${sel.selMonth||""}월`]);
+      }));
       if(rows.length>1){
         const ws=XLSX.utils.aoa_to_sheet(rows);
         ws["!cols"]=Array(rows[0].length).fill({wch:14});
         XLSX.utils.book_append_sheet(wb,ws,`라루피_${cha}차`);
       }
-    }
-    // 라루피시크릿: 년도/월별 시트
-    const secretSelKeys=[];
-    for(const s of supps.filter(s=>s.grade===G.S)){
+    }));
+
+    // 라루피시크릿: 년도/월 키 수집 후 병렬 처리
+    const ymSet=new Set();
+    await Promise.all(secretSupps.map(async s=>{
       const keys=await db.list(`selection:${s.id}:`);
       keys.filter(k=>!k.includes(":cha:")).forEach(k=>{
         const parts=k.split(":");
-        const ym=`${parts[parts.length-2]}_${parts[parts.length-1]}`;
-        if(!secretSelKeys.includes(ym))secretSelKeys.push(ym);
+        ymSet.add(`${parts[parts.length-2]}_${parts[parts.length-1]}`);
       });
-    }
-    for(const ym of secretSelKeys.sort()){
+    }));
+    await Promise.all([...ymSet].sort().map(async ym=>{
       const[y,m]=ym.split("_");
       const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","제품명","제품코드"]];
-      for(const s of supps.filter(s=>s.grade===G.S)){
-        const sel=await db.get(`selection:${s.id}:${y}:${m}`);
-        if(!sel)continue;
-        const addr=await db.get(`address:${s.id}`)||{};
-        rows.push([s.gen,s.nick,GN[s.grade],addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",y,m,sel.productName,sel.productCode]);
-      }
+      await Promise.all(secretSupps.map(async s=>{
+        const[sel,addr]=await Promise.all([db.get(`selection:${s.id}:${y}:${m}`),db.get(`address:${s.id}`)]);
+        if(!sel)return;
+        const a=addr||{};
+        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",y,m,sel.productName,sel.productCode]);
+      }));
       if(rows.length>1){
         const ws=XLSX.utils.aoa_to_sheet(rows);
         ws["!cols"]=Array(rows[0].length).fill({wch:14});
         XLSX.utils.book_append_sheet(wb,ws,`시크릿_${y}년${m}월`);
       }
-    }
+    }));
+
     if(wb.SheetNames.length===0){
       const ws=XLSX.utils.aoa_to_sheet([["신청된 제품이 없습니다."]]);
       XLSX.utils.book_append_sheet(wb,ws,"결과없음");
@@ -589,7 +631,6 @@ export default function App(){
     </div>
   );
 
-  // ── [신규] 제품 신청 확인 팝업 모달
   const ConfirmModal=()=>{
     if(!selConfirmProd)return null;
     const isL=me?.grade===G.L;
@@ -604,9 +645,7 @@ export default function App(){
           <div style={{background:BRAND.primaryLight,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
             <div style={{fontWeight:800,fontSize:15,color:PC,marginBottom:4}}>{selConfirmProd.name}</div>
             <div style={{fontSize:12,color:MUTED}}>제품 코드: {selConfirmProd.code}</div>
-            <div style={{fontSize:12,color:MUTED,marginTop:4}}>
-              {isL?`${selectedCha}차 신청`:`${selYr}년 ${selMo}월 신청`}
-            </div>
+            <div style={{fontSize:12,color:MUTED,marginTop:4}}>{isL?`${selectedCha}차 신청`:`${selYr}년 ${selMo}월 신청`}</div>
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setSelConfirmProd(null)} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
@@ -643,9 +682,7 @@ export default function App(){
     const isL=me.grade===G.L;
     return(
       <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
-        {/* 제품 신청 확인 팝업 */}
         <ConfirmModal/>
-
         <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
           <div><Logo/><div style={{fontSize:11,color:MUTED,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -666,16 +703,13 @@ export default function App(){
           </>)}
 
           {sp==="months"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>
-              {isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}
-            </div>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>{isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}</div>
             {isL?(
               <div style={card}>
                 <div style={{fontSize:13,color:MUTED,marginBottom:16}}>관리자가 오픈한 차수를 선택하세요.</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
                   {LACHAS.map(cha=>{
-                    const saved=savedChas.includes(cha);
-                    const isOpen=openChaList.includes(cha);
+                    const saved=savedChas.includes(cha);const isOpen=openChaList.includes(cha);
                     return(<button key={cha} onClick={()=>isOpen&&selectCha(cha)}
                       style={{padding:"22px 0",borderRadius:12,border:`2px solid ${!isOpen?"#EEE":saved?PC:BORDER}`,background:!isOpen?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!isOpen?"#CCC":saved?PC:TEXT,fontWeight:800,cursor:isOpen?"pointer":"not-allowed",fontSize:18,position:"relative",transition:"all 0.15s"}}>
                       {cha}차
@@ -694,8 +728,7 @@ export default function App(){
                 <label style={lbl}>월</label>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginTop:4}}>
                   {MONTHS.map(m=>{
-                    const saved=savedMonths.some(s=>s.year===yr&&s.month===m);
-                    const accessible=isMonthAccessible(yr,m);
+                    const saved=savedMonths.some(s=>s.year===yr&&s.month===m);const accessible=isMonthAccessible(yr,m);
                     return(<button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
                       style={{padding:"10px 0",borderRadius:10,border:`2px solid ${!accessible?"#EEE":saved?PC:BORDER}`,background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
                       {m}월{!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
@@ -765,8 +798,7 @@ export default function App(){
                   <div style={{fontWeight:700,fontSize:13,color:MUTED,marginBottom:10}}>신청할 차수를 선택하세요</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
                     {LACHAS.map(cha=>{
-                      const isOpen=openChaList.includes(cha);
-                      const isSel=selectedCha===cha;
+                      const isOpen=openChaList.includes(cha);const isSel=selectedCha===cha;
                       return(<button key={cha} onClick={()=>isOpen&&setSelectedCha(cha)}
                         style={{padding:"10px 16px",borderRadius:10,border:`2px solid ${isSel?PC:isOpen?BORDER:"#EEE"}`,background:isSel?PC:isOpen?CARD:"#F5F5F5",color:isSel?"#fff":isOpen?TEXT:"#CCC",fontWeight:700,fontSize:14,cursor:isOpen?"pointer":"not-allowed",minWidth:52}}>
                         {cha}차{!isOpen&&<div style={{fontSize:9}}>🔒</div>}
@@ -925,7 +957,6 @@ export default function App(){
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
               {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(<button key={g} onClick={()=>{setProdGrade(g);}} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:prodGrade===g?CARD:"transparent",color:prodGrade===g?GC[g]:MUTED,boxShadow:prodGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>))}
             </div>
-
             {prodGrade===G.L&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>🔓 차수 오픈 관리</div>
               <div style={{fontSize:12,color:MUTED,marginBottom:12}}>버튼을 클릭하면 오픈/클로즈 전환됩니다.</div>
@@ -935,7 +966,6 @@ export default function App(){
               </div>
               {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
             </>)}
-
             {prodGrade===G.S&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🔓 활동 오픈 달 설정</div>
               <div style={{fontSize:12,color:MUTED,marginBottom:12}}>오픈된 달만 써포터즈가 미래 달 활동을 입력할 수 있습니다.</div>
@@ -949,8 +979,6 @@ export default function App(){
               <OpenMonthList grade={prodGrade} refreshKey={openRefresh}/>
             </>)}
           </div>
-
-          {/* 제품 등록 */}
           <div style={card}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>🛍️ 제품 등록</div>
             {prodGrade===G.L?(
@@ -971,14 +999,12 @@ export default function App(){
             <label style={lbl}>제품 코드</label><input style={inp} placeholder="제품 코드 입력" value={newProd.code} onChange={e=>setNewProd(p=>({...p,code:e.target.value}))}/>
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <button onClick={addProduct} style={{...btn(PC),flex:2}}>➕ 제품 추가</button>
-              {/* ── [신규] 지난달/지난차수 불러오기 버튼 */}
               <button onClick={loadPrevMonthProds} disabled={loadingPrevProd} style={{...btn(BRAND.primaryLight,PC),flex:1,fontSize:12,opacity:loadingPrevProd?0.7:1}}>
                 {loadingPrevProd?"불러오는 중...":prodGrade===G.L?`${prodCha-1>0?prodCha-1+"차":"이전"} 불러오기`:"지난달 불러오기"}
               </button>
             </div>
             {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
           </div>
-
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
             {prodGrade===G.L?`라루피 ${prodCha}차`:`라루피시크릿 ${prodYear}년 ${prodMonth}월`} 제품 ({prodList.length}개)
           </div>
@@ -988,7 +1014,7 @@ export default function App(){
 
         {atab==="activities"&&(<>
           {!viewSupp?(<>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
               <span style={{fontWeight:700,fontSize:15}}>활동 현황</span>
               <select value={actYear} onChange={e=>{const y=+e.target.value;setActYear(y);loadActSummary(y);}} style={sel}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
               <select value={actMonth} onChange={e=>setActMonth(+e.target.value)} style={sel}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
@@ -996,8 +1022,7 @@ export default function App(){
               <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={sel}><option value="전체">전체 등급</option><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
             </div>
-            {/* ── [신규] 엑셀 버튼 두 개로 분리 */}
-            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
               <button onClick={downloadActivityExcel} disabled={downloading} style={{...btn(PC,undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📥 활동내역 엑셀"}</button>
               <button onClick={downloadSelectionExcel} disabled={downloading} style={{...btn("#2A6B55",undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📦 신청상품 취합"}</button>
             </div>
@@ -1048,11 +1073,9 @@ export default function App(){
       </div>
     </div>
   );
-
   return null;
 }
 
-// 라루피 오픈 차수 현황 표시
 function OpenChaList({refreshKey}){
   const[list,setList]=useState([]);
   const PC=BRAND.primary,MUTED="#888";
@@ -1061,7 +1084,6 @@ function OpenChaList({refreshKey}){
   return<div style={{fontSize:12,color:PC,fontWeight:700,marginBottom:10}}>현재 오픈된 차수: {list.map(c=>`${c}차`).join(", ")}</div>;
 }
 
-// 라루피 차수 토글 버튼
 function OpenChaToggle({cha,refreshKey,onToggle}){
   const[isOpen,setIsOpen]=useState(false);
   const PC=BRAND.primary;

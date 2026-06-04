@@ -152,7 +152,8 @@ export default function App(){
   const[openRefresh,setOpenRefresh]=useState(0);
   const[excelPreview,setExcelPreview]=useState([]);
   const[excelErr,setExcelErr]=useState("");
-  const[downloading,setDownloading]=useState(false);
+  const[downloadingAct,setDownloadingAct]=useState(false);
+  const[downloadingSel,setDownloadingSel]=useState(false);
   const[loadingPrevProd,setLoadingPrevProd]=useState(false);
 
   useEffect(()=>{
@@ -525,7 +526,7 @@ export default function App(){
 
   // ── 병렬 처리 최적화: downloadActivityExcel
   const downloadActivityExcel=async()=>{
-    setDownloading(true);const wb=XLSX.utils.book_new();
+    setDownloadingAct(true);const wb=XLSX.utils.book_new();
     const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
@@ -569,12 +570,12 @@ export default function App(){
 
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data])=>{const ws=XLSX.utils.aoa_to_sheet(data);ws["!cols"]=Array(data[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,name);});
     XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
-    setDownloading(false);
+    setDownloadingAct(false);
   };
 
   // ── 병렬 처리 최적화: downloadSelectionExcel
   const downloadSelectionExcel=async()=>{
-    setDownloading(true);
+    setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
     const laroupiSupps=supps.filter(s=>s.grade===G.L);
     const secretSupps=supps.filter(s=>s.grade===G.S);
@@ -625,7 +626,7 @@ export default function App(){
       XLSX.utils.book_append_sheet(wb,ws,"결과없음");
     }
     XLSX.writeFile(wb,`LALUPPY_신청상품취합_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
-    setDownloading(false);
+    setDownloadingSel(false);
   };
 
   const PC=BRAND.primary,BG="#FAF8F5",CARD="#fff",BORDER="#E8E0D5",TEXT="#2C2C2C",MUTED="#888";
@@ -1057,8 +1058,8 @@ export default function App(){
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={downloadActivityExcel} disabled={downloading} style={{...btn(PC,undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📥 활동내역 엑셀"}</button>
-              <button onClick={downloadSelectionExcel} disabled={downloading} style={{...btn("#2A6B55",undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📦 신청상품 취합"}</button>
+              <button onClick={downloadActivityExcel} disabled={downloadingAct||downloadingSel} style={{...btn(PC,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingAct?0.7:1}}>{downloadingAct?"생성 중...":"📥 활동내역 엑셀"}</button>
+              <button onClick={downloadSelectionExcel} disabled={downloadingAct||downloadingSel} style={{...btn("#2A6B55",undefined,true),padding:"8px 14px",flex:1,opacity:downloadingSel?0.7:1}}>{downloadingSel?"생성 중...":"📦 신청상품 취합"}</button>
             </div>
             {supps.length===0&&<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>}
             {loadingSum&&<div style={{textAlign:"center",padding:20,color:MUTED}}>불러오는 중...</div>}

@@ -72,11 +72,21 @@ export default function App(){
     const saved=sessionStorage.getItem("laluppy_user");
     const savedView=sessionStorage.getItem("laluppy_view");
     if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
+    // localStorage에서 저장된 아이디 불러오기
+    const savedId=localStorage.getItem("laluppy_savedId");
+    if(savedId){
+      try{
+        const {gen,nick,phone}=JSON.parse(savedId);
+        setLf(f=>({...f,gen:gen||"",nick:nick||"",phone:phone||""}));
+        setSaveId(true);
+      }catch{}
+    }
   },[]);
 
   const[view,setView]=useState("login");
   const[adminMode,setAdminMode]=useState(false);
   const[lf,setLf]=useState({gen:"",nick:"",phone:"",code:""});
+  const[saveId,setSaveId]=useState(false);
   const[lerr,setLerr]=useState("");
   const[me,setMe]=useState(null);
   const[sp,setSp]=useState("notices");
@@ -292,7 +302,13 @@ export default function App(){
     if(!lf.gen||!lf.nick||!lf.phone){setLerr("모든 항목을 입력해 주세요.");return;}
     const list=await db.get("supporters")||[];
     const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
-    if(found){setMe(found);setView("supporter");setLerr("");setSp("notices");sessionStorage.setItem("laluppy_user",JSON.stringify(found));sessionStorage.setItem("laluppy_view","supporter");}
+    if(found){
+      if(saveId) localStorage.setItem("laluppy_savedId",JSON.stringify({gen:lf.gen.trim(),nick:lf.nick.trim(),phone:lf.phone.trim()}));
+      else localStorage.removeItem("laluppy_savedId");
+      setMe(found);setView("supporter");setLerr("");setSp("notices");
+      sessionStorage.setItem("laluppy_user",JSON.stringify(found));
+      sessionStorage.setItem("laluppy_view","supporter");
+    }
     else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
   };
 
@@ -668,7 +684,15 @@ export default function App(){
           <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:20}}>
             {[false,true].map(isA=>(<button key={String(isA)} onClick={()=>{setAdminMode(isA);setLerr("");}} style={{flex:1,padding:"9px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:adminMode===isA?CARD:"transparent",color:adminMode===isA?PC:MUTED,boxShadow:adminMode===isA?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{isA?"관리자":"써포터즈"}</button>))}
           </div>
-          {!adminMode?(<><label style={lbl}>기수</label><input style={inp} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>닉네임</label><input style={inp} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>전화번호 끝 4자리</label><input style={inp} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/></>)
+          {!adminMode?(<><label style={lbl}>기수</label><input style={inp} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>닉네임</label><input style={inp} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>전화번호 끝 4자리</label><input style={inp} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:14,userSelect:"none"}}>
+              <div onClick={()=>setSaveId(v=>!v)} style={{width:20,height:20,borderRadius:5,border:`2px solid ${saveId?PC:BORDER}`,background:saveId?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                {saveId&&<span style={{color:"#fff",fontSize:13,lineHeight:1}}>✓</span>}
+              </div>
+              <span style={{fontSize:13,color:saveId?PC:MUTED,fontWeight:saveId?700:400}} onClick={()=>setSaveId(v=>!v)}>아이디 저장</span>
+              {saveId&&<span style={{fontSize:11,color:MUTED,marginLeft:"auto"}}>📱 이 기기에 저장됨</span>}
+            </label>
+          </>)
             :(<><label style={lbl}>관리자 코드</label><input style={inp} type="password" value={lf.code} onChange={e=>setLf(f=>({...f,code:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/></>)}
           {lerr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:10,textAlign:"center"}}>{lerr}</div>}
           <button onClick={doLogin} style={{...btn(PC),width:"100%",marginTop:4}}>로그인</button>

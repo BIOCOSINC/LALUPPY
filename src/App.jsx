@@ -222,6 +222,16 @@ export default function App(){
     else setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);
   };
 
+  // 라루피시크릿: 년/월 바뀌면 즉시 초기화 (DB 응답 전 이전 값이 남아 잠기는 현상 방지)
+  useEffect(()=>{
+    if(me&&me.grade===G.S&&sp==="product") setMySelection(null);
+  },[selYr,selMo]);
+
+  // 라루피: 차수 바뀌면 즉시 초기화
+  useEffect(()=>{
+    if(me&&me.grade===G.L&&sp==="product") setMySelection(null);
+  },[selectedCha]);
+
   const loadAdminProds=async()=>{
     if(prodGrade===G.L) setProdList(await db.get(`products:laroupi:cha:${prodCha}`)||[]);
     else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);

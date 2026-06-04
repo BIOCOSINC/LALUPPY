@@ -27,7 +27,7 @@ const GC={laroupi:"#004638",laroupisecret:"#2A6B55"};
 const GB={laroupi:"#E6F0ED",laroupisecret:"#D6EBE3"};
 const YEARS=[2024,2025,2026,2027,2028,2029,2030];
 const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
-const LACHAS=[1,2,3,4,5,6]; // 라루피 차수
+const LACHAS=[1,2,3,4,5,6];
 const BRAND={logoUrl:"/logo.png",logoText:"LALUPPY",primary:"#004638",primaryLight:"#E6F0ED"};
 
 async function compressImage(file){
@@ -83,12 +83,12 @@ export default function App(){
   const[sp,setSp]=useState("notices");
   const[myNotices,setMyNotices]=useState([]);
   const[savedMonths,setSavedMonths]=useState([]);
-  const[openMonthsList,setOpenMonthsList]=useState([]); // 라루피시크릿 오픈 달
-  const[openChaList,setOpenChaList]=useState([]);       // 라루피 오픈 차수
+  const[openMonthsList,setOpenMonthsList]=useState([]);
+  const[openChaList,setOpenChaList]=useState([]);
   const[yr,setYr]=useState(new Date().getFullYear());
   const[mo,setMo]=useState(new Date().getMonth()+1);
-  const[selectedActCha,setSelectedActCha]=useState(1); // 라루피 활동 차수
-  const[savedChas,setSavedChas]=useState([]);           // 라루피 저장된 차수
+  const[selectedActCha,setSelectedActCha]=useState(1);
+  const[savedChas,setSavedChas]=useState([]);
   const[act,setAct]=useState(null);
   const[savMsg,setSavMsg]=useState("");
   const[saving,setSaving]=useState(false);
@@ -100,15 +100,18 @@ export default function App(){
   const[addrMsg,setAddrMsg]=useState("");
   const[addrSaving,setAddrSaving]=useState(false);
   const[addrEditMode,setAddrEditMode]=useState(false);
-  // 제품 선택
-  const[selectedCha,setSelectedCha]=useState(1);   // 라루피용 차수
-  const[selYr,setSelYr]=useState(new Date().getFullYear()); // 라루피시크릿용
+  const[selectedCha,setSelectedCha]=useState(1);
+  const[selYr,setSelYr]=useState(new Date().getFullYear());
   const[selMo,setSelMo]=useState(new Date().getMonth()+1);
   const[availableProds,setAvailableProds]=useState([]);
   const[mySelection,setMySelection]=useState(null);
   const[selMsg,setSelMsg]=useState("");
   const[canSelectProduct,setCanSelectProduct]=useState(false);
   const[canSelectReason,setCanSelectReason]=useState("");
+
+  // ── [신규] 제품 최종 제출 확인 팝업
+  const[selConfirmProd,setSelConfirmProd]=useState(null); // 확인 팝업에 표시할 제품
+
   // admin
   const[atab,setAtab]=useState("supporters");
   const[supps,setSupps]=useState([]);
@@ -136,7 +139,7 @@ export default function App(){
   const[prodGrade,setProdGrade]=useState(G.L);
   const[prodYear,setProdYear]=useState(new Date().getFullYear());
   const[prodMonth,setProdMonth]=useState(new Date().getMonth()+1);
-  const[prodCha,setProdCha]=useState(1); // 관리자 차수 선택
+  const[prodCha,setProdCha]=useState(1);
   const[prodList,setProdList]=useState([]);
   const[newProd,setNewProd]=useState({name:"",code:""});
   const[prodMsg,setProdMsg]=useState("");
@@ -145,6 +148,9 @@ export default function App(){
   const[excelPreview,setExcelPreview]=useState([]);
   const[excelErr,setExcelErr]=useState("");
   const[downloading,setDownloading]=useState(false);
+
+  // ── [신규] 지난달 상품 불러오기 로딩 상태
+  const[loadingPrevProd,setLoadingPrevProd]=useState(false);
 
   useEffect(()=>{
     if(view==="admin"){
@@ -207,18 +213,15 @@ export default function App(){
     else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
   };
 
-  // 선신청·후활동 로직
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
-      // 라루피: 차수 기반 체크
       const keys=await db.list(`selection:${me.id}:cha:`);
       if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
       const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
       const lastCha=Math.max(...chaNums);
       const lastSel=await db.get(`selection:${me.id}:cha:${lastCha}`);
       if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
-      // 마지막 선택 이후 제출된 활동이 있는지 확인
       const{selYear,selMonth}=lastSel;
       const actKeys=await db.list(`activity:${me.id}:`);
       let hasSubmitted=false;
@@ -231,7 +234,6 @@ export default function App(){
       if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
       else{setCanSelectProduct(false);setCanSelectReason(`${lastCha}차 신청 후 활동을 먼저 제출해 주세요.`);}
     } else {
-      // 라루피시크릿: 년도/월 기반 체크
       const keys=await db.list(`selection:${me.id}:`);
       const filtered=keys.filter(k=>!k.includes(":cha:"));
       if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
@@ -314,15 +316,24 @@ export default function App(){
     new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
   };
 
-  const saveProductSelection=async prod=>{
+  // ── [신규] 제품 선택 확인 팝업 열기 (기존 saveProductSelection 대체)
+  const handleSelectProduct=prod=>{
     if(!canSelectProduct)return;
+    setSelConfirmProd(prod);
+  };
+
+  // ── [신규] 최종 제출 확정
+  const confirmProductSelection=async()=>{
+    const prod=selConfirmProd;
+    if(!prod)return;
     const now=new Date();
     const sel=me.grade===G.L
       ?{productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,selYear:now.getFullYear(),selMonth:now.getMonth()+1}
       :{productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
     const key=me.grade===G.L?`selection:${me.id}:cha:${selectedCha}`:`selection:${me.id}:${selYr}:${selMo}`;
     const ok=await db.set(key,sel);
-    if(ok){setMySelection(sel);setSelMsg("제품이 선택되었습니다! ✓");}
+    setSelConfirmProd(null);
+    if(ok){setMySelection(sel);setSelMsg("제품이 최종 신청되었습니다! ✓");}
     else setSelMsg("저장에 실패했습니다.");
     setTimeout(()=>setSelMsg(""),2500);
   };
@@ -340,7 +351,31 @@ export default function App(){
     const list=prodList.filter(p=>p.id!==id);await db.set(key,list);setProdList(list);
   };
 
-  // 라루피 차수 오픈/클로즈
+  // ── [신규] 지난달 상품 불러오기
+  const loadPrevMonthProds=async()=>{
+    setLoadingPrevProd(true);
+    let prevYear=prodYear,prevMonth=prodMonth-1;
+    if(prevMonth<1){prevMonth=12;prevYear=prodYear-1;}
+    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha-1}`:`products:${prodGrade}:${prevYear}:${prevMonth}`;
+    const prev=await db.get(key)||[];
+    if(prev.length===0){setProdMsg("지난 기간 등록된 제품이 없습니다.");setTimeout(()=>setProdMsg(""),2500);setLoadingPrevProd(false);return;}
+    // 기존 목록과 병합 (중복 코드 제외)
+    const currentList=[...prodList];
+    let added=0;
+    for(const p of prev){
+      if(!currentList.find(c=>c.code===p.code)){
+        currentList.push({...p,id:`p${Date.now()}_${Math.random().toString(36).slice(2,5)}`});
+        added++;
+      }
+    }
+    const saveKey=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
+    await db.set(saveKey,currentList);
+    setProdList(currentList);
+    setProdMsg(`${added}개 불러오기 완료! (중복 ${prev.length-added}개 제외)`);
+    setTimeout(()=>setProdMsg(""),3000);
+    setLoadingPrevProd(false);
+  };
+
   const toggleOpenCha=async cha=>{
     const list=await db.get(`openCha:laroupi`)||[];
     const isOpen=list.includes(cha);
@@ -351,7 +386,6 @@ export default function App(){
     setTimeout(()=>setProdMsg(""),1500);
   };
 
-  // 라루피시크릿 오픈 달 추가
   const addOpenMonth=async()=>{
     const list=await db.get(`openMonths:${prodGrade}`)||[];
     if(list.find(om=>om.year===newOpenMonth.year&&om.month===newOpenMonth.month)){setProdMsg("이미 오픈된 달입니다.");setTimeout(()=>setProdMsg(""),2000);return;}
@@ -443,6 +477,7 @@ export default function App(){
     }
     await db.set("supporters",existing);setSupps(existing);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
   };
+
   const downloadActivityExcel=async()=>{
     setDownloading(true);const wb=XLSX.utils.book_new();
     const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
@@ -455,7 +490,6 @@ export default function App(){
       for(const k of keys.sort()){
         const d=await db.get(k);if(!d)continue;
         const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
-        // 차수 선택 찾기 (라루피)
         let selInfo={productName:"",productCode:"",cha:""};
         if(s.grade===G.L){
           const chaKeys=await db.list(`selection:${s.id}:cha:`);
@@ -472,6 +506,58 @@ export default function App(){
     }
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data])=>{const ws=XLSX.utils.aoa_to_sheet(data);ws["!cols"]=Array(data[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,name);});
     XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);setDownloading(false);
+  };
+
+  // ── [신규] 신청상품 취합 엑셀 다운로드
+  const downloadSelectionExcel=async()=>{
+    setDownloading(true);
+    const wb=XLSX.utils.book_new();
+    // 라루피: 차수별 시트
+    for(const cha of LACHAS){
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","차수","제품명","제품코드","신청일시"]];
+      for(const s of supps.filter(s=>s.grade===G.L)){
+        const sel=await db.get(`selection:${s.id}:cha:${cha}`);
+        if(!sel)continue;
+        const addr=await db.get(`address:${s.id}`)||{};
+        rows.push([s.gen,s.nick,GN[s.grade],addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",`${cha}차`,sel.productName,sel.productCode,`${sel.selYear||""}년 ${sel.selMonth||""}월`]);
+      }
+      if(rows.length>1){
+        const ws=XLSX.utils.aoa_to_sheet(rows);
+        ws["!cols"]=Array(rows[0].length).fill({wch:14});
+        XLSX.utils.book_append_sheet(wb,ws,`라루피_${cha}차`);
+      }
+    }
+    // 라루피시크릿: 년도/월별 시트
+    const secretSelKeys=[];
+    for(const s of supps.filter(s=>s.grade===G.S)){
+      const keys=await db.list(`selection:${s.id}:`);
+      keys.filter(k=>!k.includes(":cha:")).forEach(k=>{
+        const parts=k.split(":");
+        const ym=`${parts[parts.length-2]}_${parts[parts.length-1]}`;
+        if(!secretSelKeys.includes(ym))secretSelKeys.push(ym);
+      });
+    }
+    for(const ym of secretSelKeys.sort()){
+      const[y,m]=ym.split("_");
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","제품명","제품코드"]];
+      for(const s of supps.filter(s=>s.grade===G.S)){
+        const sel=await db.get(`selection:${s.id}:${y}:${m}`);
+        if(!sel)continue;
+        const addr=await db.get(`address:${s.id}`)||{};
+        rows.push([s.gen,s.nick,GN[s.grade],addr.name||"",addr.phone||"",addr.zonecode||"",addr.address||"",addr.addressDetail||"",y,m,sel.productName,sel.productCode]);
+      }
+      if(rows.length>1){
+        const ws=XLSX.utils.aoa_to_sheet(rows);
+        ws["!cols"]=Array(rows[0].length).fill({wch:14});
+        XLSX.utils.book_append_sheet(wb,ws,`시크릿_${y}년${m}월`);
+      }
+    }
+    if(wb.SheetNames.length===0){
+      const ws=XLSX.utils.aoa_to_sheet([["신청된 제품이 없습니다."]]);
+      XLSX.utils.book_append_sheet(wb,ws,"결과없음");
+    }
+    XLSX.writeFile(wb,`LALUPPY_신청상품취합_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
+    setDownloading(false);
   };
 
   const PC=BRAND.primary,BG="#FAF8F5",CARD="#fff",BORDER="#E8E0D5",TEXT="#2C2C2C",MUTED="#888";
@@ -503,6 +589,34 @@ export default function App(){
     </div>
   );
 
+  // ── [신규] 제품 신청 확인 팝업 모달
+  const ConfirmModal=()=>{
+    if(!selConfirmProd)return null;
+    const isL=me?.grade===G.L;
+    return(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+        <div style={{background:CARD,borderRadius:18,padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:36,marginBottom:8}}>🛍️</div>
+            <div style={{fontWeight:800,fontSize:17,marginBottom:6}}>제품 신청 확인</div>
+            <div style={{fontSize:13,color:MUTED,lineHeight:1.6}}>신청하시겠습니까?<br/>신청 후 변경은 불가능합니다.</div>
+          </div>
+          <div style={{background:BRAND.primaryLight,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
+            <div style={{fontWeight:800,fontSize:15,color:PC,marginBottom:4}}>{selConfirmProd.name}</div>
+            <div style={{fontSize:12,color:MUTED}}>제품 코드: {selConfirmProd.code}</div>
+            <div style={{fontSize:12,color:MUTED,marginTop:4}}>
+              {isL?`${selectedCha}차 신청`:`${selYr}년 ${selMo}월 신청`}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>setSelConfirmProd(null)} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
+            <button onClick={confirmProductSelection} style={{...btn(PC),flex:2,boxShadow:"0 4px 16px rgba(0,70,56,0.25)"}}>✅ 최종 신청</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── LOGIN
   if(view==="login")return(
     <div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
@@ -529,6 +643,9 @@ export default function App(){
     const isL=me.grade===G.L;
     return(
       <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
+        {/* 제품 신청 확인 팝업 */}
+        <ConfirmModal/>
+
         <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
           <div><Logo/><div style={{fontSize:11,color:MUTED,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -643,7 +760,6 @@ export default function App(){
               <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>✅ 제품 신청이 가능합니다!</div>
             )}
             <div style={card}>
-              {/* 라루피: 차수 선택 / 라루피시크릿: 년도·월 선택 */}
               {isL?(
                 <>
                   <div style={{fontWeight:700,fontSize:13,color:MUTED,marginBottom:10}}>신청할 차수를 선택하세요</div>
@@ -675,10 +791,10 @@ export default function App(){
                 :<div style={{display:"flex",flexDirection:"column",gap:10}}>
                   {availableProds.map(p=>{
                     const isSelected=mySelection?.productId===p.id;
-                    const disabled=!canSelectProduct;
-                    return(<div key={p.id} onClick={()=>!disabled&&saveProductSelection(p)}
-                      style={{padding:"14px 16px",borderRadius:10,border:`2px solid ${isSelected?PC:BORDER}`,background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled?0.6:1}}>
-                      <div><div style={{fontWeight:700,fontSize:14,color:disabled?MUTED:TEXT}}>{p.name}</div><div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div></div>
+                    const disabled=!canSelectProduct||!!mySelection;
+                    return(<div key={p.id} onClick={()=>!disabled&&handleSelectProduct(p)}
+                      style={{padding:"14px 16px",borderRadius:10,border:`2px solid ${isSelected?PC:BORDER}`,background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled&&!isSelected?0.6:1}}>
+                      <div><div style={{fontWeight:700,fontSize:14,color:disabled&&!isSelected?MUTED:TEXT}}>{p.name}</div><div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div></div>
                       {isSelected?<span style={{color:PC,fontWeight:700,fontSize:18}}>✓</span>:disabled?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>신청불가</span>:<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
                     </div>);
                   })}
@@ -805,13 +921,11 @@ export default function App(){
         </>)}
 
         {atab==="products"&&(<>
-          {/* 등급 선택 */}
           <div style={card}>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
               {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(<button key={g} onClick={()=>{setProdGrade(g);}} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:prodGrade===g?CARD:"transparent",color:prodGrade===g?GC[g]:MUTED,boxShadow:prodGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>))}
             </div>
 
-            {/* 라루피: 차수 오픈 관리 */}
             {prodGrade===G.L&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>🔓 차수 오픈 관리</div>
               <div style={{fontSize:12,color:MUTED,marginBottom:12}}>버튼을 클릭하면 오픈/클로즈 전환됩니다.</div>
@@ -822,7 +936,6 @@ export default function App(){
               {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
             </>)}
 
-            {/* 라루피시크릿: 오픈 달 관리 */}
             {prodGrade===G.S&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🔓 활동 오픈 달 설정</div>
               <div style={{fontSize:12,color:MUTED,marginBottom:12}}>오픈된 달만 써포터즈가 미래 달 활동을 입력할 수 있습니다.</div>
@@ -856,8 +969,16 @@ export default function App(){
             )}
             <label style={lbl}>제품명</label><input style={inp} placeholder="제품명 입력" value={newProd.name} onChange={e=>setNewProd(p=>({...p,name:e.target.value}))}/>
             <label style={lbl}>제품 코드</label><input style={inp} placeholder="제품 코드 입력" value={newProd.code} onChange={e=>setNewProd(p=>({...p,code:e.target.value}))}/>
-            <button onClick={addProduct} style={{...btn(PC),width:"100%"}}>➕ 제품 추가</button>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button onClick={addProduct} style={{...btn(PC),flex:2}}>➕ 제품 추가</button>
+              {/* ── [신규] 지난달/지난차수 불러오기 버튼 */}
+              <button onClick={loadPrevMonthProds} disabled={loadingPrevProd} style={{...btn(BRAND.primaryLight,PC),flex:1,fontSize:12,opacity:loadingPrevProd?0.7:1}}>
+                {loadingPrevProd?"불러오는 중...":prodGrade===G.L?`${prodCha-1>0?prodCha-1+"차":"이전"} 불러오기`:"지난달 불러오기"}
+              </button>
+            </div>
+            {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
           </div>
+
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
             {prodGrade===G.L?`라루피 ${prodCha}차`:`라루피시크릿 ${prodYear}년 ${prodMonth}월`} 제품 ({prodList.length}개)
           </div>
@@ -874,7 +995,11 @@ export default function App(){
               <select value={actGen} onChange={e=>setActGen(e.target.value)} style={sel}><option value="전체">전체 기수</option>{[...new Set(supps.map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}</select>
               <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={sel}><option value="전체">전체 등급</option><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
-              <button onClick={downloadActivityExcel} disabled={downloading} style={{...btn(PC,undefined,true),marginLeft:"auto",padding:"6px 14px",opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📥 엑셀 다운로드"}</button>
+            </div>
+            {/* ── [신규] 엑셀 버튼 두 개로 분리 */}
+            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+              <button onClick={downloadActivityExcel} disabled={downloading} style={{...btn(PC,undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📥 활동내역 엑셀"}</button>
+              <button onClick={downloadSelectionExcel} disabled={downloading} style={{...btn("#2A6B55",undefined,true),padding:"8px 14px",flex:1,opacity:downloading?0.7:1}}>{downloading?"생성 중...":"📦 신청상품 취합"}</button>
             </div>
             {supps.length===0&&<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>}
             {loadingSum&&<div style={{textAlign:"center",padding:20,color:MUTED}}>불러오는 중...</div>}

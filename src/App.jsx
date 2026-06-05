@@ -127,6 +127,12 @@ export default function App(){
   const[nmsg,setNmsg]=useState("");
   const[af,setAf]=useState({gen:"",nick:"",phone:""});
   const[amsg,setAmsg]=useState("");
+  // 일괄 등급 변경
+  const[bulkMode,setBulkMode]=useState(false);
+  const[bulkSelected,setBulkSelected]=useState(new Set());
+  const[bulkTargetGrade,setBulkTargetGrade]=useState(G.S);
+  const[bulkMsg,setBulkMsg]=useState("");
+  const[bulkSaving,setBulkSaving]=useState(false);
   const[viewSupp,setViewSupp]=useState(null);
   const[viewActs,setViewActs]=useState([]);
   const[loadingVA,setLoadingVA]=useState(false);
@@ -459,6 +465,34 @@ export default function App(){
     await db.set("supporters",next);setSupps(next);setAf({gen:"",nick:"",phone:""});setAmsg("등록 완료! ✓");setTimeout(()=>setAmsg(""),2000);
   };
   const changeGrade=async(id,grade)=>{const next=supps.map(s=>s.id===id?{...s,grade}:s);await db.set("supporters",next);setSupps(next);};
+
+  // 기수별 전체선택 토글
+  const toggleSelectByGen=gen=>{
+    const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
+    const allSelected=ids.every(id=>bulkSelected.has(id));
+    setBulkSelected(prev=>{
+      const next=new Set(prev);
+      if(allSelected) ids.forEach(id=>next.delete(id));
+      else ids.forEach(id=>next.add(id));
+      return next;
+    });
+  };
+  // 전체 선택/해제
+  const toggleSelectAll=()=>{
+    if(bulkSelected.size===supps.length) setBulkSelected(new Set());
+    else setBulkSelected(new Set(supps.map(s=>s.id)));
+  };
+  // 일괄 등급 변경 실행
+  const applyBulkGrade=async()=>{
+    if(bulkSelected.size===0){setBulkMsg("변경할 회원을 선택해 주세요.");setTimeout(()=>setBulkMsg(""),2000);return;}
+    if(!window.confirm(`선택한 ${bulkSelected.size}명을 ${GN[bulkTargetGrade]}으로 변경하시겠습니까?`))return;
+    setBulkSaving(true);
+    const next=supps.map(s=>bulkSelected.has(s.id)?{...s,grade:bulkTargetGrade}:s);
+    const ok=await db.set("supporters",next);
+    if(ok){setSupps(next);setBulkSelected(new Set());setBulkMsg(`✅ ${bulkSelected.size}명 변경 완료!`);}
+    else setBulkMsg("저장에 실패했습니다.");
+    setBulkSaving(false);setTimeout(()=>setBulkMsg(""),3000);
+  };
   const delSupporter=async id=>{if(!window.confirm("정말 삭제하시겠습니까?"))return;const next=supps.filter(s=>s.id!==id);await db.set("supporters",next);setSupps(next);if(viewSupp?.id===id)setViewSupp(null);};
   const saveNotice=async()=>{
     if(!nf.title||!nf.content){setNmsg("제목과 내용을 입력해 주세요.");return;}
@@ -957,16 +991,88 @@ export default function App(){
               <div style={{display:"flex",gap:8}}><button onClick={confirmExcelUpload} style={{...btn(PC),flex:1}}>✅ 등록 확정</button><button onClick={()=>setExcelPreview([])} style={{...btn("#EEE8E0",TEXT)}}>취소</button></div>
             </>)}
           </div>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:10}}>써포터즈 목록 ({supps.length}명)</div>
+          {/* 일괄 등급 변경 패널 */}
+          <div style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bulkMode?14:0}}>
+              <div style={{fontWeight:700,fontSize:15}}>👥 일괄 등급 변경</div>
+              <button onClick={()=>{setBulkMode(v=>!v);setBulkSelected(new Set());setBulkMsg("");}} style={btn(bulkMode?"#EEE8E0":BRAND.primaryLight,bulkMode?TEXT:PC,true)}>
+                {bulkMode?"취소":"선택 모드 켜기"}
+              </button>
+            </div>
+            {bulkMode&&(<>
+              {/* 변경 대상 등급 선택 */}
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:13,color:MUTED,fontWeight:600}}>변경할 등급:</span>
+                {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
+                  <button key={g} onClick={()=>setBulkTargetGrade(g)}
+                    style={{padding:"6px 14px",borderRadius:8,border:`2px solid ${bulkTargetGrade===g?GC[g]:BORDER}`,background:bulkTargetGrade===g?GB[g]:CARD,color:bulkTargetGrade===g?GC[g]:MUTED,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+              {/* 기수별 전체선택 버튼 */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>기수별 전체선택</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  <button onClick={toggleSelectAll}
+                    style={{padding:"5px 12px",borderRadius:6,border:`1.5px solid ${bulkSelected.size===supps.length?PC:BORDER}`,background:bulkSelected.size===supps.length?PC:CARD,color:bulkSelected.size===supps.length?"#fff":TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    {bulkSelected.size===supps.length?"전체 해제":"전체 선택"}
+                  </button>
+                  {[...new Set(supps.map(s=>s.gen))].sort().map(gen=>{
+                    const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
+                    const allSel=ids.length>0&&ids.every(id=>bulkSelected.has(id));
+                    const someSel=ids.some(id=>bulkSelected.has(id));
+                    return(
+                      <button key={gen} onClick={()=>toggleSelectByGen(gen)}
+                        style={{padding:"5px 12px",borderRadius:6,border:`1.5px solid ${allSel?PC:someSel?"#90B8A8":BORDER}`,background:allSel?PC:someSel?BRAND.primaryLight:CARD,color:allSel?"#fff":someSel?PC:TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                        {gen} ({ids.length}명)
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* 선택 현황 & 실행 버튼 */}
+              <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{fontSize:13,color:PC,fontWeight:700,flex:1}}>
+                  {bulkSelected.size>0?`${bulkSelected.size}명 선택됨 → ${GN[bulkTargetGrade]}으로 변경`:"회원을 선택하세요"}
+                </div>
+                <button onClick={applyBulkGrade} disabled={bulkSaving||bulkSelected.size===0}
+                  style={{...btn(bulkSelected.size===0?"#CCC":GC[bulkTargetGrade]),padding:"9px 18px",opacity:bulkSaving?0.7:1,cursor:bulkSelected.size===0?"not-allowed":"pointer"}}>
+                  {bulkSaving?"저장 중...":"✅ 일괄 변경"}
+                </button>
+              </div>
+              {bulkMsg&&<div style={{fontSize:13,fontWeight:700,color:PC,marginTop:8}}>{bulkMsg}</div>}
+            </>)}
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
+            {bulkMode&&bulkSelected.size>0&&<div style={{fontSize:12,color:PC,fontWeight:700}}>{bulkSelected.size}명 선택</div>}
+          </div>
           {supps.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>
-            :supps.map(s=>(<div key={s.id} style={{...card,display:"flex",alignItems:"center",gap:8,padding:"12px 16px"}}>
-              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div><div style={{fontSize:11,color:MUTED}}>끝자리: {s.phone} · {s.joinDate}</div></div>
-              <select value={s.grade} onChange={e=>changeGrade(s.id,e.target.value)} style={{border:`1.5px solid ${BORDER}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,color:GC[s.grade],background:GB[s.grade],cursor:"pointer",outline:"none"}}>
-                <option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option>
-              </select>
-              <button onClick={()=>openSuppActs(s)} style={btn("#EEE8E0",TEXT,true)}>조회</button>
-              <button onClick={()=>delSupporter(s.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>
-            </div>))}
+            :supps.map(s=>{
+              const isChecked=bulkSelected.has(s.id);
+              return(<div key={s.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const next=new Set(prev);isChecked?next.delete(s.id):next.add(s.id);return next;});}}}
+                style={{...card,display:"flex",alignItems:"center",gap:8,padding:"12px 16px",cursor:bulkMode?"pointer":"default",border:isChecked?`2px solid ${PC}`:"2px solid transparent",background:isChecked?BRAND.primaryLight:CARD,transition:"all 0.1s"}}>
+                {bulkMode&&(
+                  <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?PC:BORDER}`,background:isChecked?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {isChecked&&<span style={{color:"#fff",fontSize:12,lineHeight:1}}>✓</span>}
+                  </div>
+                )}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
+                  <div style={{fontSize:11,color:MUTED}}>끝자리: {s.phone} · {s.joinDate}</div>
+                </div>
+                {!bulkMode&&(
+                  <select value={s.grade} onChange={e=>changeGrade(s.id,e.target.value)} style={{border:`1.5px solid ${BORDER}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,color:GC[s.grade],background:GB[s.grade],cursor:"pointer",outline:"none"}}>
+                    <option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option>
+                  </select>
+                )}
+                {bulkMode&&<span style={tag(s.grade)}>{GN[s.grade]}</span>}
+                {!bulkMode&&<button onClick={()=>openSuppActs(s)} style={btn("#EEE8E0",TEXT,true)}>조회</button>}
+                {!bulkMode&&<button onClick={()=>delSupporter(s.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>}
+              </div>);
+            })}
         </>)}
 
         {atab==="notices"&&(<>

@@ -59,6 +59,62 @@ function OpenMonthList({grade,refreshKey}){
   </div>;
 }
 
+// ── 회원정보 수정 모달
+function EditMemberModal({supp, onSave, onClose, existingSupps}){
+  const PC=BRAND.primary, BORDER="#E8E0D5", MUTED="#888", TEXT="#2C2C2C";
+  const [ef, setEf] = useState({gen: supp.gen, nick: supp.nick, phone: supp.phone});
+  const [emsg, setEmsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
+  const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
+  const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
+
+  const doSave = async () => {
+    const {gen, nick, phone} = ef;
+    if(!gen.trim() || !nick.trim() || !phone.trim()){setEmsg("모든 항목을 입력해 주세요."); return;}
+    if(phone.trim().length !== 4 || isNaN(phone.trim())){setEmsg("전화번호 끝 4자리를 숫자로 입력해 주세요."); return;}
+    // 중복 체크 (자기 자신 제외)
+    const duplicate = existingSupps.find(s =>
+      s.id !== supp.id &&
+      s.gen === gen.trim() &&
+      s.nick === nick.trim()
+    );
+    if(duplicate){setEmsg("동일 기수/닉네임이 이미 존재합니다."); return;}
+    setSaving(true);
+    await onSave(supp.id, {gen: gen.trim(), nick: nick.trim(), phone: phone.trim()});
+    setSaving(false);
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:18,padding:28,maxWidth:360,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:17}}>✏️ 회원정보 수정</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:MUTED,lineHeight:1}}>×</button>
+        </div>
+        {/* 현재 정보 요약 */}
+        <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:13,color:PC,fontWeight:600}}>
+          현재: {supp.gen} · {supp.nick} · 끝자리 {supp.phone}
+        </div>
+        <label style={lbl}>기수 *</label>
+        <input style={inp} placeholder="예: 1기" value={ef.gen} onChange={e=>setEf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        <label style={lbl}>닉네임 *</label>
+        <input style={inp} placeholder="닉네임" value={ef.nick} onChange={e=>setEf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        <label style={lbl}>전화번호 끝 4자리 *</label>
+        <input style={inp} placeholder="예: 5678" maxLength={4} value={ef.phone} onChange={e=>setEf(f=>({...f,phone:e.target.value.replace(/\D/g,"")}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        {emsg && <div style={{color:"#C0392B",fontSize:13,marginBottom:10,fontWeight:600}}>{emsg}</div>}
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <button onClick={onClose} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
+          <button onClick={doSave} disabled={saving} style={{...btn(PC),flex:2,opacity:saving?0.7:1,boxShadow:"0 4px 16px rgba(0,70,56,0.2)"}}>
+            {saving?"저장 중...":"✅ 저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   useEffect(()=>{
     const s=document.createElement("script");s.src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";document.head.appendChild(s);
@@ -72,7 +128,6 @@ export default function App(){
     const saved=sessionStorage.getItem("laluppy_user");
     const savedView=sessionStorage.getItem("laluppy_view");
     if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
-    // localStorage에서 저장된 아이디 불러오기
     const savedId=localStorage.getItem("laluppy_savedId");
     if(savedId){
       try{
@@ -127,7 +182,6 @@ export default function App(){
   const[nmsg,setNmsg]=useState("");
   const[af,setAf]=useState({gen:"",nick:"",phone:""});
   const[amsg,setAmsg]=useState("");
-  // 일괄 등급 변경
   const[bulkMode,setBulkMode]=useState(false);
   const[bulkSelected,setBulkSelected]=useState(new Set());
   const[bulkTargetGrade,setBulkTargetGrade]=useState(G.S);
@@ -161,18 +215,19 @@ export default function App(){
   const[downloadingAct,setDownloadingAct]=useState(false);
   const[downloadingSel,setDownloadingSel]=useState(false);
   const[loadingPrevProd,setLoadingPrevProd]=useState(false);
+  // ── 회원정보 수정 모달 상태
+  const[editTarget,setEditTarget]=useState(null); // 수정 대상 써포터즈 객체
+  const[editMsg,setEditMsg]=useState("");
 
   useEffect(()=>{
     if(view==="admin"){
       db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
-      // 공지 병렬 로드
       Promise.all([db.get("notices:laroupi"),db.get("notices:laroupisecret")]).then(([lp,sc])=>{setNlp(lp||[]);setNsc(sc||[]);});
     }
   },[view]);
 
   useEffect(()=>{
     if(me){
-      // 로그인 후 초기 데이터 병렬 로드
       Promise.all([
         db.get(`notices:${me.grade}`),
         db.get(`address:${me.id}`),
@@ -190,7 +245,6 @@ export default function App(){
 
   useEffect(()=>{
     if(me&&sp==="product"){
-      // 제품탭 진입 시 병렬 로드
       Promise.all([loadAvailableProds(),loadMySelection(),loadCanSelect()]);
     }
   },[me,sp,selectedCha,selYr,selMo]);
@@ -229,12 +283,10 @@ export default function App(){
     else setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);
   };
 
-  // 라루피시크릿: 년/월 바뀌면 즉시 초기화 (DB 응답 전 이전 값이 남아 잠기는 현상 방지)
   useEffect(()=>{
     if(me&&me.grade===G.S&&sp==="product") setMySelection(null);
   },[selYr,selMo]);
 
-  // 라루피: 차수 바뀌면 즉시 초기화
   useEffect(()=>{
     if(me&&me.grade===G.L&&sp==="product") setMySelection(null);
   },[selectedCha]);
@@ -244,7 +296,6 @@ export default function App(){
     else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
   };
 
-  // ── 병렬 처리 최적화: loadCanSelect
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
@@ -259,7 +310,6 @@ export default function App(){
       if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
       const{selYear,selMonth}=lastSel;
       const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
-      // 관련 활동 병렬 로드
       const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
       const hasSubmitted=acts.some(a=>a?.submitted);
       if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
@@ -268,7 +318,6 @@ export default function App(){
       const keys=await db.list(`selection:${me.id}:`);
       const filtered=keys.filter(k=>!k.includes(":cha:"));
       if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
-      // 선택 목록 병렬 로드
       const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
       sels.sort((a,b)=>b.year-a.year||b.month-a.month);
       const last=sels[0];
@@ -284,15 +333,12 @@ export default function App(){
     return openMonthsList.some(om=>om.year===year&&om.month===month);
   };
 
-  // ── 병렬 처리 최적화: loadActSummary (핵심 개선)
   const loadActSummary=async(year,suppList)=>{
     const list=suppList!==undefined?suppList:supps;
     if(!list.length)return;
     setLoadingSum(true);
-    // 모든 써포터즈 병렬 처리
     const entries=await Promise.all(list.map(async s=>{
       const keys=await db.list(`activity:${s.id}:${year}:`);
-      // 각 써포터즈의 활동도 병렬 로드
       const acts=await Promise.all(keys.map(k=>db.get(k)));
       const monthData={};
       acts.forEach((d,i)=>{
@@ -466,7 +512,21 @@ export default function App(){
   };
   const changeGrade=async(id,grade)=>{const next=supps.map(s=>s.id===id?{...s,grade}:s);await db.set("supporters",next);setSupps(next);};
 
-  // 기수별 전체선택 토글
+  // ── 회원정보 수정 저장 핸들러
+  const handleEditSave = async (id, fields) => {
+    const next = supps.map(s => s.id === id ? {...s, ...fields} : s);
+    const ok = await db.set("supporters", next);
+    if(ok){
+      setSupps(next);
+      setEditTarget(null);
+      setEditMsg(`✅ ${fields.nick} 회원정보가 수정되었습니다.`);
+      setTimeout(()=>setEditMsg(""), 3000);
+    } else {
+      setEditMsg("저장에 실패했습니다.");
+      setTimeout(()=>setEditMsg(""), 2500);
+    }
+  };
+
   const toggleSelectByGen=gen=>{
     const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
     const allSelected=ids.every(id=>bulkSelected.has(id));
@@ -477,12 +537,10 @@ export default function App(){
       return next;
     });
   };
-  // 전체 선택/해제
   const toggleSelectAll=()=>{
     if(bulkSelected.size===supps.length) setBulkSelected(new Set());
     else setBulkSelected(new Set(supps.map(s=>s.id)));
   };
-  // 일괄 등급 변경 실행
   const applyBulkGrade=async()=>{
     if(bulkSelected.size===0){setBulkMsg("변경할 회원을 선택해 주세요.");setTimeout(()=>setBulkMsg(""),2000);return;}
     if(!window.confirm(`선택한 ${bulkSelected.size}명을 ${GN[bulkTargetGrade]}으로 변경하시겠습니까?`))return;
@@ -502,7 +560,6 @@ export default function App(){
   };
   const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set(`notices:${grade}`,list);grade===G.L?setNlp(list):setNsc(list);};
 
-  // ── 병렬 처리 최적화: openSuppActs
   const openSuppActs=async supp=>{
     setViewSupp(supp);setLoadingVA(true);
     const keys=await db.list(`activity:${supp.id}:`);
@@ -511,7 +568,6 @@ export default function App(){
     setViewActs(acts);setLoadingVA(false);
   };
 
-  // ── 병렬 처리 최적화: loadAllInquiries
   const loadAllInquiries=async()=>{
     setLoadingIq(true);
     const list=await db.get("supporters")||[];
@@ -550,7 +606,6 @@ export default function App(){
     const existing=await db.get("supporters")||[];let added=0;
     const newMembers=excelPreview.filter(p=>!existing.find(s=>s.gen===p.gen&&s.nick===p.nick))
       .map(p=>({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
-    // 주소 병렬 저장
     await Promise.all(newMembers.map(ns=>ns._addr?db.set(`address:${ns.id}`,ns._addr):Promise.resolve()));
     const clean=newMembers.map(({_addr,...rest})=>rest);
     added=clean.length;
@@ -558,63 +613,43 @@ export default function App(){
     await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
   };
 
-  // ── 병렬 처리 최적화: downloadActivityExcel
   const downloadActivityExcel=async()=>{
     setDownloadingAct(true);const wb=XLSX.utils.book_new();
     const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     const extra=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
-
-    // 써포터즈별 데이터 병렬 수집
     await Promise.all(supps.map(async s=>{
       const grade=GN[s.grade];
-      const[addr,keys]=await Promise.all([
-        db.get(`address:${s.id}`),
-        db.list(`activity:${s.id}:`)
-      ]);
+      const[addr,keys]=await Promise.all([db.get(`address:${s.id}`),db.list(`activity:${s.id}:`)]);
       const addrData=addr||{};
-      // 활동 데이터 병렬 로드
-      const actData=await Promise.all(keys.sort().map(async k=>{
-        const d=await db.get(k);
-        return{k,d};
-      }));
-      // 선택 정보 병렬 로드
+      const actData=await Promise.all(keys.sort().map(async k=>{const d=await db.get(k);return{k,d};}));
       const selKeys=s.grade===G.L?await db.list(`selection:${s.id}:cha:`):[];
       const selDatas=await Promise.all(selKeys.map(ck=>db.get(ck)));
       const selMap={};
       selDatas.forEach((cs,i)=>{if(cs)selMap[`${cs.selYear}_${cs.selMonth}`]={productName:cs.productName,productCode:cs.productCode,cha:`${cs.cha}차`};});
-
       for(const{k,d} of actData){
         if(!d)continue;
         const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
         let selInfo={productName:"",productCode:"",cha:""};
-        if(s.grade===G.L){
-          selInfo=selMap[`${d.year}_${d.month}`]||selInfo;
-        } else {
-          const sel=await db.get(`selection:${s.id}:${d.year}:${d.month}`);
-          if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};
-        }
+        if(s.grade===G.L){selInfo=selMap[`${d.year}_${d.month}`]||selInfo;}
+        else{const sel=await db.get(`selection:${s.id}:${d.year}:${d.month}`);if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};}
         sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",addrData.address||"",addrData.addressDetail||"",d.year,d.month,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
         (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,d.year,d.month,i+1,b.link]);});
         (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,d.year,d.month,i+1,v.link||"",v.photo?"O":"X"]);});
         (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,d.year,d.month,i+1,e.link||"",e.photo?"O":"X"]);});
       }
     }));
-
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data])=>{const ws=XLSX.utils.aoa_to_sheet(data);ws["!cols"]=Array(data[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,name);});
     XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
     setDownloadingAct(false);
   };
 
-  // ── 병렬 처리 최적화: downloadSelectionExcel
   const downloadSelectionExcel=async()=>{
     setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
     const laroupiSupps=supps.filter(s=>s.grade===G.L);
     const secretSupps=supps.filter(s=>s.grade===G.S);
-
-    // 라루피: 차수별 병렬 처리
     await Promise.all(LACHAS.map(async cha=>{
       const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","차수","제품명","제품코드","신청일시"]];
       await Promise.all(laroupiSupps.map(async s=>{
@@ -623,21 +658,12 @@ export default function App(){
         const a=addr||{};
         rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",`${cha}차`,sel.productName,sel.productCode,`${sel.selYear||""}년 ${sel.selMonth||""}월`]);
       }));
-      if(rows.length>1){
-        const ws=XLSX.utils.aoa_to_sheet(rows);
-        ws["!cols"]=Array(rows[0].length).fill({wch:14});
-        XLSX.utils.book_append_sheet(wb,ws,`라루피_${cha}차`);
-      }
+      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,`라루피_${cha}차`);}
     }));
-
-    // 라루피시크릿: 년도/월 키 수집 후 병렬 처리
     const ymSet=new Set();
     await Promise.all(secretSupps.map(async s=>{
       const keys=await db.list(`selection:${s.id}:`);
-      keys.filter(k=>!k.includes(":cha:")).forEach(k=>{
-        const parts=k.split(":");
-        ymSet.add(`${parts[parts.length-2]}_${parts[parts.length-1]}`);
-      });
+      keys.filter(k=>!k.includes(":cha:")).forEach(k=>{const parts=k.split(":");ymSet.add(`${parts[parts.length-2]}_${parts[parts.length-1]}`);});
     }));
     await Promise.all([...ymSet].sort().map(async ym=>{
       const[y,m]=ym.split("_");
@@ -648,17 +674,9 @@ export default function App(){
         const a=addr||{};
         rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",y,m,sel.productName,sel.productCode]);
       }));
-      if(rows.length>1){
-        const ws=XLSX.utils.aoa_to_sheet(rows);
-        ws["!cols"]=Array(rows[0].length).fill({wch:14});
-        XLSX.utils.book_append_sheet(wb,ws,`시크릿_${y}년${m}월`);
-      }
+      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,`시크릿_${y}년${m}월`);}
     }));
-
-    if(wb.SheetNames.length===0){
-      const ws=XLSX.utils.aoa_to_sheet([["신청된 제품이 없습니다."]]);
-      XLSX.utils.book_append_sheet(wb,ws,"결과없음");
-    }
+    if(wb.SheetNames.length===0){const ws=XLSX.utils.aoa_to_sheet([["신청된 제품이 없습니다."]]);XLSX.utils.book_append_sheet(wb,ws,"결과없음");}
     XLSX.writeFile(wb,`LALUPPY_신청상품취합_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
     setDownloadingSel(false);
   };
@@ -760,7 +778,6 @@ export default function App(){
           </div>
         </div>
         <div style={{...ctr,paddingTop:20}}>
-
           {sp==="notices"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📢 공지사항</div>
             {myNotices.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:40}}>등록된 공지사항이 없습니다.</div>
@@ -770,7 +787,6 @@ export default function App(){
               <button onClick={()=>setSp("months")} style={{...btn(PC),width:"100%"}}>📝 활동 내역 입력하기 →</button>
             </div>
           </>)}
-
           {sp==="months"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>{isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}</div>
             {isL?(
@@ -809,7 +825,6 @@ export default function App(){
               </div>
             )}
           </>)}
-
           {sp==="activity"&&act&&(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
               <button onClick={()=>setSp("months")} style={btn("#EEE8E0",TEXT,true)}>← {isL?"차수":"월"} 선택</button>
@@ -850,7 +865,6 @@ export default function App(){
             </div>
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{savMsg}</div>}
           </>)}
-
           {sp==="product"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
             {!canSelectProduct?(
@@ -903,7 +917,6 @@ export default function App(){
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:PC}}>{selMsg}</div>}
             </div>
           </>)}
-
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
             {myAddress.address&&!addrEditMode?(
@@ -928,7 +941,6 @@ export default function App(){
               </div>
             )}
           </>)}
-
           {sp==="inquiry"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>💬 관리자 문의</div>
             <div style={card}>
@@ -954,6 +966,15 @@ export default function App(){
   // ── ADMIN
   if(view==="admin")return(
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
+      {/* 회원정보 수정 모달 */}
+      {editTarget && (
+        <EditMemberModal
+          supp={editTarget}
+          existingSupps={supps}
+          onSave={handleEditSave}
+          onClose={()=>setEditTarget(null)}
+        />
+      )}
       <div style={{background:PC,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
         <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={btn("rgba(255,255,255,0.15)","#fff",true)}>로그아웃</button>
@@ -991,6 +1012,7 @@ export default function App(){
               <div style={{display:"flex",gap:8}}><button onClick={confirmExcelUpload} style={{...btn(PC),flex:1}}>✅ 등록 확정</button><button onClick={()=>setExcelPreview([])} style={{...btn("#EEE8E0",TEXT)}}>취소</button></div>
             </>)}
           </div>
+
           {/* 일괄 등급 변경 패널 */}
           <div style={card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bulkMode?14:0}}>
@@ -1000,7 +1022,6 @@ export default function App(){
               </button>
             </div>
             {bulkMode&&(<>
-              {/* 변경 대상 등급 선택 */}
               <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:13,color:MUTED,fontWeight:600}}>변경할 등급:</span>
                 {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
@@ -1010,7 +1031,6 @@ export default function App(){
                   </button>
                 ))}
               </div>
-              {/* 기수별 전체선택 버튼 */}
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>기수별 전체선택</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
@@ -1031,7 +1051,6 @@ export default function App(){
                   })}
                 </div>
               </div>
-              {/* 선택 현황 & 실행 버튼 */}
               <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{fontSize:13,color:PC,fontWeight:700,flex:1}}>
                   {bulkSelected.size>0?`${bulkSelected.size}명 선택됨 → ${GN[bulkTargetGrade]}으로 변경`:"회원을 선택하세요"}
@@ -1045,10 +1064,17 @@ export default function App(){
             </>)}
           </div>
 
+          {/* 써포터즈 목록 */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
             {bulkMode&&bulkSelected.size>0&&<div style={{fontSize:12,color:PC,fontWeight:700}}>{bulkSelected.size}명 선택</div>}
           </div>
+          {/* 수정 완료 메시지 */}
+          {editMsg&&(
+            <div style={{padding:"10px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:12,fontSize:13,color:"#2E7D32",fontWeight:600}}>
+              {editMsg}
+            </div>
+          )}
           {supps.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>
             :supps.map(s=>{
               const isChecked=bulkSelected.has(s.id);
@@ -1069,6 +1095,16 @@ export default function App(){
                   </select>
                 )}
                 {bulkMode&&<span style={tag(s.grade)}>{GN[s.grade]}</span>}
+                {/* ── 수정 버튼 추가 */}
+                {!bulkMode&&(
+                  <button
+                    onClick={e=>{e.stopPropagation();setEditTarget(s);}}
+                    style={btn(BRAND.primaryLight,PC,true)}
+                    title="회원정보 수정"
+                  >
+                    ✏️ 수정
+                  </button>
+                )}
                 {!bulkMode&&<button onClick={()=>openSuppActs(s)} style={btn("#EEE8E0",TEXT,true)}>조회</button>}
                 {!bulkMode&&<button onClick={()=>delSupporter(s.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>}
               </div>);

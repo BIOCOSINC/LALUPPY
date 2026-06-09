@@ -218,6 +218,9 @@ export default function App(){
   // ── 회원정보 수정 모달 상태
   const[editTarget,setEditTarget]=useState(null); // 수정 대상 써포터즈 객체
   const[editMsg,setEditMsg]=useState("");
+  // ── 써포터즈 검색
+  const[suppSearch,setSuppSearch]=useState("");
+  const[suppSearchGrade,setSuppSearchGrade]=useState("전체"); // "전체" | "laroupi" | "laroupisecret"
 
   useEffect(()=>{
     if(view==="admin"){
@@ -1069,14 +1072,69 @@ export default function App(){
             <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
             {bulkMode&&bulkSelected.size>0&&<div style={{fontSize:12,color:PC,fontWeight:700}}>{bulkSelected.size}명 선택</div>}
           </div>
+          {/* ── 검색 바 */}
+          <div style={{background:CARD,borderRadius:12,padding:"12px 14px",boxShadow:"0 2px 10px rgba(0,0,0,0.06)",marginBottom:14}}>
+            {/* 등급 필터 탭 */}
+            <div style={{display:"flex",background:"#F0EBE4",borderRadius:8,padding:3,marginBottom:10}}>
+              {[["전체","전체"],["laroupi","라루피"],["laroupisecret","라루피시크릿"]].map(([val,label])=>(
+                <button key={val} onClick={()=>setSuppSearchGrade(val)}
+                  style={{flex:1,padding:"7px 0",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700,fontSize:12,
+                    background:suppSearchGrade===val?(val==="laroupi"?GB.laroupi:val==="laroupisecret"?GB.laroupisecret:CARD):"transparent",
+                    color:suppSearchGrade===val?(val==="laroupi"?GC.laroupi:val==="laroupisecret"?GC.laroupisecret:PC):MUTED,
+                    boxShadow:suppSearchGrade===val?"0 1px 4px rgba(0,0,0,0.1)":"none",transition:"all 0.15s"}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {/* 닉네임 검색 입력 */}
+            <div style={{position:"relative"}}>
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none"}}>🔍</span>
+              <input
+                style={{width:"100%",padding:"9px 36px 9px 36px",border:`1.5px solid ${suppSearch?PC:BORDER}`,borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#FAFAFA",fontFamily:"inherit",transition:"border-color 0.15s"}}
+                placeholder="기수 또는 닉네임으로 검색"
+                value={suppSearch}
+                onChange={e=>setSuppSearch(e.target.value)}
+              />
+              {suppSearch&&(
+                <button onClick={()=>setSuppSearch("")}
+                  style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:MUTED,lineHeight:1,padding:0}}>
+                  ×
+                </button>
+              )}
+            </div>
+            {/* 검색 결과 카운트 */}
+            {(()=>{
+              const filtered=supps.filter(s=>{
+                const gradeMatch=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
+                const q=suppSearch.trim().toLowerCase();
+                const textMatch=!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q));
+                return gradeMatch&&textMatch;
+              });
+              const total=filtered.length;
+              if(suppSearch||suppSearchGrade!=="전체") return(
+                <div style={{marginTop:8,fontSize:12,color:total>0?PC:MUTED,fontWeight:total>0?700:400}}>
+                  {total>0?`${total}명 검색됨`:"검색 결과가 없습니다."}
+                </div>
+              );
+              return null;
+            })()}
+          </div>
           {/* 수정 완료 메시지 */}
           {editMsg&&(
             <div style={{padding:"10px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:12,fontSize:13,color:"#2E7D32",fontWeight:600}}>
               {editMsg}
             </div>
           )}
-          {supps.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>
-            :supps.map(s=>{
+          {(()=>{
+            const filteredSupps=supps.filter(s=>{
+              const gradeMatch=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
+              const q=suppSearch.trim().toLowerCase();
+              const textMatch=!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q));
+              return gradeMatch&&textMatch;
+            });
+            if(supps.length===0) return <div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>;
+            if(filteredSupps.length===0) return <div style={{...card,textAlign:"center",color:MUTED,padding:32}}>검색 결과가 없습니다.</div>;
+            return filteredSupps.map(s=>{
               const isChecked=bulkSelected.has(s.id);
               return(<div key={s.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const next=new Set(prev);isChecked?next.delete(s.id):next.add(s.id);return next;});}}}
                 style={{...card,display:"flex",alignItems:"center",gap:8,padding:"12px 16px",cursor:bulkMode?"pointer":"default",border:isChecked?`2px solid ${PC}`:"2px solid transparent",background:isChecked?BRAND.primaryLight:CARD,transition:"all 0.1s"}}>
@@ -1108,7 +1166,8 @@ export default function App(){
                 {!bulkMode&&<button onClick={()=>openSuppActs(s)} style={btn("#EEE8E0",TEXT,true)}>조회</button>}
                 {!bulkMode&&<button onClick={()=>delSupporter(s.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>}
               </div>);
-            })}
+            });
+          })()}
         </>)}
 
         {atab==="notices"&&(<>

@@ -46,12 +46,12 @@ function blankAct(grade){
 function OpenMonthList({grade,refreshKey}){
   const[list,setList]=useState([]);
   const PC=BRAND.primary,MUTED="#888",BORDER="#E8E0D5";
-  useEffect(()=>{db.get(`openMonths:${grade}`).then(d=>setList(d||[]));},[ grade,refreshKey]);
-  const del=async id=>{const next=list.filter(om=>om.id!==id);await db.set(`openMonths:${grade}`,next);setList(next);};
+  useEffect(()=>{db.get("openMonths:"+grade).then(d=>setList(d||[]));},[ grade,refreshKey]);
+  const del=async id=>{const next=list.filter(om=>om.id!==id);await db.set("openMonths:"+grade,next);setList(next);};
   if(list.length===0)return<div style={{fontSize:12,color:MUTED,padding:"8px 0"}}>오픈된 달이 없습니다.</div>;
   return<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
     {list.sort((a,b)=>a.year-b.year||a.month-b.month).map(om=>(
-      <div key={om.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:BRAND.primaryLight,borderRadius:8,fontSize:12,border:`1px solid ${BORDER}`}}>
+      <div key={om.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",background:BRAND.primaryLight,borderRadius:8,fontSize:12,border:"1px solid "+BORDER}}>
         <span style={{fontWeight:700,color:PC}}>{om.year}년 {om.month}월</span>
         <button onClick={()=>del(om.id)} style={{background:"none",border:"none",cursor:"pointer",color:MUTED,fontSize:14,padding:0,lineHeight:1}}>×</button>
       </div>
@@ -65,27 +65,19 @@ function EditMemberModal({supp, onSave, onClose, existingSupps}){
   const [ef, setEf] = useState({gen: supp.gen, nick: supp.nick, phone: supp.phone});
   const [emsg, setEmsg] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
+  const inp={width:"100%",padding:"10px 14px",border:"1px solid "+BORDER,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
   const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
-  const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
-
+  const btn=(bg,color,sm)=>({background:bg,color:color||"#fff",border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
   const doSave = async () => {
     const {gen, nick, phone} = ef;
-    if(!gen.trim() || !nick.trim() || !phone.trim()){setEmsg("모든 항목을 입력해 주세요."); return;}
-    if(phone.trim().length !== 4 || isNaN(phone.trim())){setEmsg("전화번호 끝 4자리를 숫자로 입력해 주세요."); return;}
-    // 중복 체크 (자기 자신 제외)
-    const duplicate = existingSupps.find(s =>
-      s.id !== supp.id &&
-      s.gen === gen.trim() &&
-      s.nick === nick.trim()
-    );
-    if(duplicate){setEmsg("동일 기수/닉네임이 이미 존재합니다."); return;}
+    if(!gen.trim()||!nick.trim()||!phone.trim()){setEmsg("모든 항목을 입력해 주세요.");return;}
+    if(phone.trim().length!==4||isNaN(phone.trim())){setEmsg("전화번호 끝 4자리를 숫자로 입력해 주세요.");return;}
+    const duplicate=existingSupps.find(s=>s.id!==supp.id&&s.gen===gen.trim()&&s.nick===nick.trim());
+    if(duplicate){setEmsg("동일 기수/닉네임이 이미 존재합니다.");return;}
     setSaving(true);
-    await onSave(supp.id, {gen: gen.trim(), nick: nick.trim(), phone: phone.trim()});
+    await onSave(supp.id,{gen:gen.trim(),nick:nick.trim(),phone:phone.trim()});
     setSaving(false);
   };
-
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"#fff",borderRadius:18,padding:28,maxWidth:360,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
@@ -93,7 +85,6 @@ function EditMemberModal({supp, onSave, onClose, existingSupps}){
           <div style={{fontWeight:800,fontSize:17}}>✏️ 회원정보 수정</div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:MUTED,lineHeight:1}}>×</button>
         </div>
-        {/* 현재 정보 요약 */}
         <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:13,color:PC,fontWeight:600}}>
           현재: {supp.gen} · {supp.nick} · 끝자리 {supp.phone}
         </div>
@@ -103,10 +94,10 @@ function EditMemberModal({supp, onSave, onClose, existingSupps}){
         <input style={inp} placeholder="닉네임" value={ef.nick} onChange={e=>setEf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
         <label style={lbl}>전화번호 끝 4자리 *</label>
         <input style={inp} placeholder="예: 5678" maxLength={4} value={ef.phone} onChange={e=>setEf(f=>({...f,phone:e.target.value.replace(/\D/g,"")}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
-        {emsg && <div style={{color:"#C0392B",fontSize:13,marginBottom:10,fontWeight:600}}>{emsg}</div>}
+        {emsg&&<div style={{color:"#C0392B",fontSize:13,marginBottom:10,fontWeight:600}}>{emsg}</div>}
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <button onClick={onClose} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
-          <button onClick={doSave} disabled={saving} style={{...btn(PC),flex:2,opacity:saving?0.7:1,boxShadow:"0 4px 16px rgba(0,70,56,0.2)"}}>
+          <button onClick={doSave} disabled={saving} style={{...btn(PC,undefined),flex:2,opacity:saving?0.7:1,boxShadow:"0 4px 16px rgba(0,70,56,0.2)"}}>
             {saving?"저장 중...":"✅ 저장"}
           </button>
         </div>
@@ -130,11 +121,7 @@ export default function App(){
     if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
     const savedId=localStorage.getItem("laluppy_savedId");
     if(savedId){
-      try{
-        const {gen,nick,phone}=JSON.parse(savedId);
-        setLf(f=>({...f,gen:gen||"",nick:nick||"",phone:phone||""}));
-        setSaveId(true);
-      }catch{}
+      try{const {gen,nick,phone}=JSON.parse(savedId);setLf(f=>({...f,gen:gen||"",nick:nick||"",phone:phone||""}));setSaveId(true);}catch{}
     }
   },[]);
 
@@ -215,12 +202,10 @@ export default function App(){
   const[downloadingAct,setDownloadingAct]=useState(false);
   const[downloadingSel,setDownloadingSel]=useState(false);
   const[loadingPrevProd,setLoadingPrevProd]=useState(false);
-  // ── 회원정보 수정 모달 상태
-  const[editTarget,setEditTarget]=useState(null); // 수정 대상 써포터즈 객체
+  const[editTarget,setEditTarget]=useState(null);
   const[editMsg,setEditMsg]=useState("");
-  // ── 써포터즈 검색
   const[suppSearch,setSuppSearch]=useState("");
-  const[suppSearchGrade,setSuppSearchGrade]=useState("전체"); // "전체" | "laroupi" | "laroupisecret"
+  const[suppSearchGrade,setSuppSearchGrade]=useState("전체");
 
   useEffect(()=>{
     if(view==="admin"){
@@ -232,13 +217,13 @@ export default function App(){
   useEffect(()=>{
     if(me){
       Promise.all([
-        db.get(`notices:${me.grade}`),
-        db.get(`address:${me.id}`),
-        me.grade===G.L ? db.get(`openCha:laroupi`) : db.get(`openMonths:${me.grade}`)
+        db.get("notices:"+me.grade),
+        db.get("address:"+me.id),
+        me.grade===G.L?db.get("openCha:laroupi"):db.get("openMonths:"+me.grade)
       ]).then(([notices,addr,openData])=>{
         setMyNotices(notices||[]);
-        if(addr) setMyAddress(addr);
-        if(me.grade===G.L) setOpenChaList(openData||[]);
+        if(addr)setMyAddress(addr);
+        if(me.grade===G.L)setOpenChaList(openData||[]);
         else setOpenMonthsList(openData||[]);
       });
       loadMySaved(me.id);
@@ -258,10 +243,10 @@ export default function App(){
 
   const loadMySaved=async uid=>{
     if(me?.grade===G.L){
-      const keys=await db.list(`activity:${uid}:cha:`);
+      const keys=await db.list("activity:"+uid+":cha:");
       setSavedChas(keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n)));
     } else {
-      const keys=await db.list(`activity:${uid}:`);
+      const keys=await db.list("activity:"+uid+":");
       setSavedMonths(keys.map(k=>{const p=k.split(":");return{year:+p[2],month:+p[3]};}).sort((a,b)=>b.year-a.year||b.month-a.month));
     }
   };
@@ -269,64 +254,56 @@ export default function App(){
   const selectCha=async cha=>{
     if(!openChaList.includes(cha))return;
     setSelectedActCha(cha);
-    const saved=await db.get(`activity:${me.id}:cha:${cha}`);
+    const saved=await db.get("activity:"+me.id+":cha:"+cha);
     setAct(saved||blankAct(me.grade));setSp("activity");
   };
-  const loadMyInquiries=async uid=>setMyInquiries(await db.get(`inquiries:${uid}`)||[]);
+  const loadMyInquiries=async uid=>setMyInquiries(await db.get("inquiries:"+uid)||[]);
 
   const loadAvailableProds=async()=>{
     if(!me)return;
-    if(me.grade===G.L) setAvailableProds(await db.get(`products:laroupi:cha:${selectedCha}`)||[]);
-    else setAvailableProds(await db.get(`products:${me.grade}:${selYr}:${selMo}`)||[]);
+    if(me.grade===G.L)setAvailableProds(await db.get("products:laroupi:cha:"+selectedCha)||[]);
+    else setAvailableProds(await db.get("products:"+me.grade+":"+selYr+":"+selMo)||[]);
   };
 
   const loadMySelection=async()=>{
     if(!me)return;
-    if(me.grade===G.L) setMySelection(await db.get(`selection:${me.id}:cha:${selectedCha}`)||null);
-    else setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);
+    if(me.grade===G.L)setMySelection(await db.get("selection:"+me.id+":cha:"+selectedCha)||null);
+    else setMySelection(await db.get("selection:"+me.id+":"+selYr+":"+selMo)||null);
   };
 
-  useEffect(()=>{
-    if(me&&me.grade===G.S&&sp==="product") setMySelection(null);
-  },[selYr,selMo]);
-
-  useEffect(()=>{
-    if(me&&me.grade===G.L&&sp==="product") setMySelection(null);
-  },[selectedCha]);
+  useEffect(()=>{if(me&&me.grade===G.S&&sp==="product")setMySelection(null);},[selYr,selMo]);
+  useEffect(()=>{if(me&&me.grade===G.L&&sp==="product")setMySelection(null);},[selectedCha]);
 
   const loadAdminProds=async()=>{
-    if(prodGrade===G.L) setProdList(await db.get(`products:laroupi:cha:${prodCha}`)||[]);
-    else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
+    if(prodGrade===G.L)setProdList(await db.get("products:laroupi:cha:"+prodCha)||[]);
+    else setProdList(await db.get("products:"+prodGrade+":"+prodYear+":"+prodMonth)||[]);
   };
 
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
-      const keys=await db.list(`selection:${me.id}:cha:`);
+      const keys=await db.list("selection:"+me.id+":cha:");
       if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
       const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
       const lastCha=Math.max(...chaNums);
-      const[lastSel,actKeys]=await Promise.all([
-        db.get(`selection:${me.id}:cha:${lastCha}`),
-        db.list(`activity:${me.id}:`)
-      ]);
+      const[lastSel,actKeys]=await Promise.all([db.get("selection:"+me.id+":cha:"+lastCha),db.list("activity:"+me.id+":")]);
       if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
       const{selYear,selMonth}=lastSel;
       const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
       const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
       const hasSubmitted=acts.some(a=>a?.submitted);
       if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
-      else{setCanSelectProduct(false);setCanSelectReason(`${lastCha}차 신청 후 활동을 먼저 제출해 주세요.`);}
+      else{setCanSelectProduct(false);setCanSelectReason(lastCha+"차 신청 후 활동을 먼저 제출해 주세요.");}
     } else {
-      const keys=await db.list(`selection:${me.id}:`);
+      const keys=await db.list("selection:"+me.id+":");
       const filtered=keys.filter(k=>!k.includes(":cha:"));
       if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
       const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
       sels.sort((a,b)=>b.year-a.year||b.month-a.month);
       const last=sels[0];
-      const lastAct=await db.get(`activity:${me.id}:${last.year}:${last.month}`);
+      const lastAct=await db.get("activity:"+me.id+":"+last.year+":"+last.month);
       if(lastAct?.submitted){setCanSelectProduct(true);setCanSelectReason("");}
-      else{setCanSelectProduct(false);setCanSelectReason(`${last.year}년 ${last.month}월 활동을 먼저 제출해 주세요.`);}
+      else{setCanSelectProduct(false);setCanSelectReason(last.year+"년 "+last.month+"월 활동을 먼저 제출해 주세요.");}
     }
   };
 
@@ -341,7 +318,7 @@ export default function App(){
     if(!list.length)return;
     setLoadingSum(true);
     const entries=await Promise.all(list.map(async s=>{
-      const keys=await db.list(`activity:${s.id}:${year}:`);
+      const keys=await db.list("activity:"+s.id+":"+year+":");
       const acts=await Promise.all(keys.map(k=>db.get(k)));
       const monthData={};
       acts.forEach((d,i)=>{
@@ -369,7 +346,7 @@ export default function App(){
     const list=await db.get("supporters")||[];
     const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
     if(found){
-      if(saveId) localStorage.setItem("laluppy_savedId",JSON.stringify({gen:lf.gen.trim(),nick:lf.nick.trim(),phone:lf.phone.trim()}));
+      if(saveId)localStorage.setItem("laluppy_savedId",JSON.stringify({gen:lf.gen.trim(),nick:lf.nick.trim(),phone:lf.phone.trim()}));
       else localStorage.removeItem("laluppy_savedId");
       setMe(found);setView("supporter");setLerr("");setSp("notices");
       sessionStorage.setItem("laluppy_user",JSON.stringify(found));
@@ -381,16 +358,16 @@ export default function App(){
   const selectMonth=async(year,month)=>{
     if(!isMonthAccessible(year,month))return;
     setYr(year);setMo(month);
-    const saved=await db.get(`activity:${me.id}:${year}:${month}`);
+    const saved=await db.get("activity:"+me.id+":"+year+":"+month);
     setAct(saved||blankAct(me.grade));setSp("activity");
   };
 
   const doSave=async(submit=false)=>{
     const missingIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
-    if(missingIdx!==-1){setSavMsg(`⚠️ 바이럴 ${missingIdx+1}번 사진이 없습니다.`);setTimeout(()=>setSavMsg(""),3000);return;}
+    if(missingIdx!==-1){setSavMsg("⚠️ 바이럴 "+(missingIdx+1)+"번 사진이 없습니다.");setTimeout(()=>setSavMsg(""),3000);return;}
     setSaving(true);
     const data={...act,year:yr,month:mo,submitted:submit?true:(act.submitted||false)};
-    const ok=await db.set(`activity:${me.id}:${yr}:${mo}`,data);
+    const ok=await db.set("activity:"+me.id+":"+yr+":"+mo,data);
     if(ok){setAct(data);loadMySaved(me.id);}
     setSavMsg(ok?(submit?"✅ 최종 제출 완료!":"저장 완료! ✓"):"저장에 실패했습니다.");
     setTimeout(()=>setSavMsg(""),3000);setSaving(false);
@@ -401,7 +378,7 @@ export default function App(){
     if(!myAddress.phone){setAddrMsg("연락처를 입력해 주세요.");return;}
     if(!myAddress.address){setAddrMsg("주소를 검색해 주세요.");return;}
     setAddrSaving(true);
-    const ok=await db.set(`address:${me.id}`,myAddress);
+    const ok=await db.set("address:"+me.id,myAddress);
     setAddrMsg(ok?"저장되었습니다! ✓":"저장에 실패했습니다.");
     setTimeout(()=>setAddrMsg(""),2500);setAddrSaving(false);
   };
@@ -411,19 +388,15 @@ export default function App(){
     new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
   };
 
-  const handleSelectProduct=prod=>{
-    if(!canSelectProduct)return;
-    setSelConfirmProd(prod);
-  };
+  const handleSelectProduct=prod=>{if(!canSelectProduct)return;setSelConfirmProd(prod);};
 
   const confirmProductSelection=async()=>{
-    const prod=selConfirmProd;
-    if(!prod)return;
+    const prod=selConfirmProd;if(!prod)return;
     const now=new Date();
     const sel=me.grade===G.L
       ?{productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,selYear:now.getFullYear(),selMonth:now.getMonth()+1}
       :{productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
-    const key=me.grade===G.L?`selection:${me.id}:cha:${selectedCha}`:`selection:${me.id}:${selYr}:${selMo}`;
+    const key=me.grade===G.L?"selection:"+me.id+":cha:"+selectedCha:"selection:"+me.id+":"+selYr+":"+selMo;
     const ok=await db.set(key,sel);
     setSelConfirmProd(null);
     if(ok){setMySelection(sel);setSelMsg("제품이 최종 신청되었습니다! ✓");}
@@ -433,14 +406,14 @@ export default function App(){
 
   const addProduct=async()=>{
     if(!newProd.name||!newProd.code){setProdMsg("제품명과 코드를 입력해 주세요.");return;}
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
-    const list=[...prodList,{id:`p${Date.now()}`,name:newProd.name,code:newProd.code}];
+    const key=prodGrade===G.L?"products:laroupi:cha:"+prodCha:"products:"+prodGrade+":"+prodYear+":"+prodMonth;
+    const list=[...prodList,{id:"p"+Date.now(),name:newProd.name,code:newProd.code}];
     const ok=await db.set(key,list);
     if(ok){setProdList(list);setNewProd({name:"",code:""});setProdMsg("제품 등록 완료! ✓");}
     setTimeout(()=>setProdMsg(""),2000);
   };
   const delProduct=async id=>{
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
+    const key=prodGrade===G.L?"products:laroupi:cha:"+prodCha:"products:"+prodGrade+":"+prodYear+":"+prodMonth;
     const list=prodList.filter(p=>p.id!==id);await db.set(key,list);setProdList(list);
   };
 
@@ -448,41 +421,37 @@ export default function App(){
     setLoadingPrevProd(true);
     let prevYear=prodYear,prevMonth=prodMonth-1;
     if(prevMonth<1){prevMonth=12;prevYear=prodYear-1;}
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha-1}`:`products:${prodGrade}:${prevYear}:${prevMonth}`;
+    const key=prodGrade===G.L?"products:laroupi:cha:"+(prodCha-1):"products:"+prodGrade+":"+prevYear+":"+prevMonth;
     const prev=await db.get(key)||[];
     if(prev.length===0){setProdMsg("지난 기간 등록된 제품이 없습니다.");setTimeout(()=>setProdMsg(""),2500);setLoadingPrevProd(false);return;}
-    const currentList=[...prodList];
-    let added=0;
+    const currentList=[...prodList];let added=0;
     for(const p of prev){
       if(!currentList.find(c=>c.code===p.code)){
-        currentList.push({...p,id:`p${Date.now()}_${Math.random().toString(36).slice(2,5)}`});
-        added++;
+        currentList.push({...p,id:"p"+Date.now()+"_"+Math.random().toString(36).slice(2,5)});added++;
       }
     }
-    const saveKey=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
-    await db.set(saveKey,currentList);
-    setProdList(currentList);
-    setProdMsg(`${added}개 불러오기 완료! (중복 ${prev.length-added}개 제외)`);
-    setTimeout(()=>setProdMsg(""),3000);
-    setLoadingPrevProd(false);
+    const saveKey=prodGrade===G.L?"products:laroupi:cha:"+prodCha:"products:"+prodGrade+":"+prodYear+":"+prodMonth;
+    await db.set(saveKey,currentList);setProdList(currentList);
+    setProdMsg(added+"개 불러오기 완료! (중복 "+(prev.length-added)+"개 제외)");
+    setTimeout(()=>setProdMsg(""),3000);setLoadingPrevProd(false);
   };
 
   const toggleOpenCha=async cha=>{
-    const list=await db.get(`openCha:laroupi`)||[];
+    const list=await db.get("openCha:laroupi")||[];
     const isOpen=list.includes(cha);
     const next=isOpen?list.filter(c=>c!==cha):[...list,cha].sort((a,b)=>a-b);
-    await db.set(`openCha:laroupi`,next);
+    await db.set("openCha:laroupi",next);
     setOpenRefresh(r=>r+1);
-    setProdMsg(`${cha}차 ${isOpen?"클로즈":"오픈"} 완료! ✓`);
+    setProdMsg(cha+"차 "+(isOpen?"클로즈":"오픈")+" 완료! ✓");
     setTimeout(()=>setProdMsg(""),1500);
   };
 
   const addOpenMonth=async()=>{
-    const list=await db.get(`openMonths:${prodGrade}`)||[];
+    const list=await db.get("openMonths:"+prodGrade)||[];
     if(list.find(om=>om.year===newOpenMonth.year&&om.month===newOpenMonth.month)){setProdMsg("이미 오픈된 달입니다.");setTimeout(()=>setProdMsg(""),2000);return;}
-    const next=[...list,{id:`om${Date.now()}`,year:newOpenMonth.year,month:newOpenMonth.month}];
-    await db.set(`openMonths:${prodGrade}`,next);setOpenRefresh(r=>r+1);
-    setProdMsg(`${newOpenMonth.year}년 ${newOpenMonth.month}월 오픈 완료! ✓`);setTimeout(()=>setProdMsg(""),2000);
+    const next=[...list,{id:"om"+Date.now(),year:newOpenMonth.year,month:newOpenMonth.month}];
+    await db.set("openMonths:"+prodGrade,next);setOpenRefresh(r=>r+1);
+    setProdMsg(newOpenMonth.year+"년 "+newOpenMonth.month+"월 오픈 완료! ✓");setTimeout(()=>setProdMsg(""),2000);
   };
 
   const uploadPhoto=async(setter,file)=>{if(!file)return;setter(await compressImage(file));};
@@ -499,9 +468,9 @@ export default function App(){
   const sendInquiry=async()=>{
     if(!iqf.title||!iqf.content){setIqMsg("제목과 내용을 입력해 주세요.");return;}
     setIqSending(true);
-    const list=await db.get(`inquiries:${me.id}`)||[];
-    const next=[{id:`iq${Date.now()}`,title:iqf.title,content:iqf.content,date:new Date().toLocaleDateString("ko-KR"),reply:null,replyDate:null},...list];
-    if(await db.set(`inquiries:${me.id}`,next)){setMyInquiries(next);setIqf({title:"",content:""});setIqMsg("문의가 전송되었습니다! ✓");}
+    const list=await db.get("inquiries:"+me.id)||[];
+    const next=[{id:"iq"+Date.now(),title:iqf.title,content:iqf.content,date:new Date().toLocaleDateString("ko-KR"),reply:null,replyDate:null},...list];
+    if(await db.set("inquiries:"+me.id,next)){setMyInquiries(next);setIqf({title:"",content:""});setIqMsg("문의가 전송되었습니다! ✓");}
     else setIqMsg("전송에 실패했습니다.");
     setTimeout(()=>setIqMsg(""),2500);setIqSending(false);
   };
@@ -510,62 +479,49 @@ export default function App(){
     const{gen,nick,phone}=af;if(!gen||!nick||!phone){setAmsg("모든 항목을 입력해 주세요.");return;}
     const list=await db.get("supporters")||[];
     if(list.find(s=>s.gen===gen.trim()&&s.nick===nick.trim())){setAmsg("동일 기수/닉네임이 존재합니다.");return;}
-    const next=[...list,{id:`s${Date.now()}`,gen:gen.trim(),nick:nick.trim(),phone:phone.trim(),grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")}];
+    const next=[...list,{id:"s"+Date.now(),gen:gen.trim(),nick:nick.trim(),phone:phone.trim(),grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")}];
     await db.set("supporters",next);setSupps(next);setAf({gen:"",nick:"",phone:""});setAmsg("등록 완료! ✓");setTimeout(()=>setAmsg(""),2000);
   };
   const changeGrade=async(id,grade)=>{const next=supps.map(s=>s.id===id?{...s,grade}:s);await db.set("supporters",next);setSupps(next);};
 
-  // ── 회원정보 수정 저장 핸들러
-  const handleEditSave = async (id, fields) => {
-    const next = supps.map(s => s.id === id ? {...s, ...fields} : s);
-    const ok = await db.set("supporters", next);
-    if(ok){
-      setSupps(next);
-      setEditTarget(null);
-      setEditMsg(`✅ ${fields.nick} 회원정보가 수정되었습니다.`);
-      setTimeout(()=>setEditMsg(""), 3000);
-    } else {
-      setEditMsg("저장에 실패했습니다.");
-      setTimeout(()=>setEditMsg(""), 2500);
-    }
+  const handleEditSave=async(id,fields)=>{
+    const next=supps.map(s=>s.id===id?{...s,...fields}:s);
+    const ok=await db.set("supporters",next);
+    if(ok){setSupps(next);setEditTarget(null);setEditMsg("✅ "+fields.nick+" 회원정보가 수정되었습니다.");setTimeout(()=>setEditMsg(""),3000);}
+    else{setEditMsg("저장에 실패했습니다.");setTimeout(()=>setEditMsg(""),2500);}
   };
 
   const toggleSelectByGen=gen=>{
     const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
     const allSelected=ids.every(id=>bulkSelected.has(id));
-    setBulkSelected(prev=>{
-      const next=new Set(prev);
-      if(allSelected) ids.forEach(id=>next.delete(id));
-      else ids.forEach(id=>next.add(id));
-      return next;
-    });
+    setBulkSelected(prev=>{const next=new Set(prev);if(allSelected)ids.forEach(id=>next.delete(id));else ids.forEach(id=>next.add(id));return next;});
   };
   const toggleSelectAll=()=>{
-    if(bulkSelected.size===supps.length) setBulkSelected(new Set());
+    if(bulkSelected.size===supps.length)setBulkSelected(new Set());
     else setBulkSelected(new Set(supps.map(s=>s.id)));
   };
   const applyBulkGrade=async()=>{
     if(bulkSelected.size===0){setBulkMsg("변경할 회원을 선택해 주세요.");setTimeout(()=>setBulkMsg(""),2000);return;}
-    if(!window.confirm(`선택한 ${bulkSelected.size}명을 ${GN[bulkTargetGrade]}으로 변경하시겠습니까?`))return;
+    if(!window.confirm("선택한 "+bulkSelected.size+"명을 "+GN[bulkTargetGrade]+"으로 변경하시겠습니까?"))return;
     setBulkSaving(true);
     const next=supps.map(s=>bulkSelected.has(s.id)?{...s,grade:bulkTargetGrade}:s);
     const ok=await db.set("supporters",next);
-    if(ok){setSupps(next);setBulkSelected(new Set());setBulkMsg(`✅ ${bulkSelected.size}명 변경 완료!`);}
+    if(ok){setSupps(next);setBulkSelected(new Set());setBulkMsg("✅ "+bulkSelected.size+"명 변경 완료!");}
     else setBulkMsg("저장에 실패했습니다.");
     setBulkSaving(false);setTimeout(()=>setBulkMsg(""),3000);
   };
   const delSupporter=async id=>{if(!window.confirm("정말 삭제하시겠습니까?"))return;const next=supps.filter(s=>s.id!==id);await db.set("supporters",next);setSupps(next);if(viewSupp?.id===id)setViewSupp(null);};
   const saveNotice=async()=>{
     if(!nf.title||!nf.content){setNmsg("제목과 내용을 입력해 주세요.");return;}
-    const list=nGrade===G.L?[...nlp]:[...nsc];list.unshift({id:`n${Date.now()}`,title:nf.title,content:nf.content,date:new Date().toLocaleDateString("ko-KR")});
-    await db.set(`notices:${nGrade}`,list);nGrade===G.L?setNlp(list):setNsc(list);
+    const list=nGrade===G.L?[...nlp]:[...nsc];list.unshift({id:"n"+Date.now(),title:nf.title,content:nf.content,date:new Date().toLocaleDateString("ko-KR")});
+    await db.set("notices:"+nGrade,list);nGrade===G.L?setNlp(list):setNsc(list);
     setNf({title:"",content:""});setNmsg("등록 완료! ✓");setTimeout(()=>setNmsg(""),2000);
   };
-  const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set(`notices:${grade}`,list);grade===G.L?setNlp(list):setNsc(list);};
+  const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set("notices:"+grade,list);grade===G.L?setNlp(list):setNsc(list);};
 
   const openSuppActs=async supp=>{
     setViewSupp(supp);setLoadingVA(true);
-    const keys=await db.list(`activity:${supp.id}:`);
+    const keys=await db.list("activity:"+supp.id+":");
     const acts=(await Promise.all(keys.map(k=>db.get(k)))).filter(Boolean);
     acts.sort((a,b)=>b.year-a.year||b.month-a.month);
     setViewActs(acts);setLoadingVA(false);
@@ -574,22 +530,23 @@ export default function App(){
   const loadAllInquiries=async()=>{
     setLoadingIq(true);
     const list=await db.get("supporters")||[];
-    const allIqs=await Promise.all(list.map(s=>db.get(`inquiries:${s.id}`).then(iqs=>(iqs||[]).map(iq=>({...iq,suppId:s.id,suppName:`${s.gen} · ${s.nick}`,grade:s.grade})))));
+    const allIqs=await Promise.all(list.map(s=>db.get("inquiries:"+s.id).then(iqs=>(iqs||[]).map(iq=>({...iq,suppId:s.id,suppName:s.gen+" · "+s.nick,grade:s.grade})))));
     const result=allIqs.flat().sort((a,b)=>b.id.localeCompare(a.id));
     setAllInquiries(result);setLoadingIq(false);
   };
 
   const sendReply=async()=>{
     if(!replyText.trim()){setReplyMsg("답변 내용을 입력해 주세요.");return;}
-    const iqs=await db.get(`inquiries:${selInquiry.suppId}`)||[];
+    const iqs=await db.get("inquiries:"+selInquiry.suppId)||[];
     const next=iqs.map(iq=>iq.id===selInquiry.id?{...iq,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")}:iq);
-    if(await db.set(`inquiries:${selInquiry.suppId}`,next)){
+    if(await db.set("inquiries:"+selInquiry.suppId,next)){
       const updated={...selInquiry,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")};
       setSelInquiry(updated);setAllInquiries(prev=>prev.map(iq=>iq.id===selInquiry.id?updated:iq));
       setReplyMsg("답변 등록 완료! ✓");setReplyText("");
     }else setReplyMsg("등록에 실패했습니다.");
     setTimeout(()=>setReplyMsg(""),2500);
   };
+
   const downloadTemplate=()=>{
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet([["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]]);
@@ -608,584 +565,28 @@ export default function App(){
   const confirmExcelUpload=async()=>{
     const existing=await db.get("supporters")||[];let added=0;
     const newMembers=excelPreview.filter(p=>!existing.find(s=>s.gen===p.gen&&s.nick===p.nick))
-      .map(p=>({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
-    await Promise.all(newMembers.map(ns=>ns._addr?db.set(`address:${ns.id}`,ns._addr):Promise.resolve()));
+      .map(p=>({id:"s"+Date.now()+"_"+Math.random().toString(36).slice(2,6),gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
+    await Promise.all(newMembers.map(ns=>ns._addr?db.set("address:"+ns.id,ns._addr):Promise.resolve()));
     const clean=newMembers.map(({_addr,...rest})=>rest);
     added=clean.length;
     const next=[...existing,...clean];
-    await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
+    await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(added+"명 등록 완료!");setTimeout(()=>setAmsg(""),3000);
   };
 
-// ── 회원정보 수정 모달
-function EditMemberModal({supp, onSave, onClose, existingSupps}){
-  const PC=BRAND.primary, BORDER="#E8E0D5", MUTED="#888", TEXT="#2C2C2C";
-  const [ef, setEf] = useState({gen: supp.gen, nick: supp.nick, phone: supp.phone});
-  const [emsg, setEmsg] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
-  const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
-  const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
-
-  const doSave = async () => {
-    const {gen, nick, phone} = ef;
-    if(!gen.trim() || !nick.trim() || !phone.trim()){setEmsg("모든 항목을 입력해 주세요."); return;}
-    if(phone.trim().length !== 4 || isNaN(phone.trim())){setEmsg("전화번호 끝 4자리를 숫자로 입력해 주세요."); return;}
-    // 중복 체크 (자기 자신 제외)
-    const duplicate = existingSupps.find(s =>
-      s.id !== supp.id &&
-      s.gen === gen.trim() &&
-      s.nick === nick.trim()
-    );
-    if(duplicate){setEmsg("동일 기수/닉네임이 이미 존재합니다."); return;}
-    setSaving(true);
-    await onSave(supp.id, {gen: gen.trim(), nick: nick.trim(), phone: phone.trim()});
-    setSaving(false);
-  };
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:"#fff",borderRadius:18,padding:28,maxWidth:360,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontWeight:800,fontSize:17}}>✏️ 회원정보 수정</div>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:MUTED,lineHeight:1}}>×</button>
-        </div>
-        {/* 현재 정보 요약 */}
-        <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:13,color:PC,fontWeight:600}}>
-          현재: {supp.gen} · {supp.nick} · 끝자리 {supp.phone}
-        </div>
-        <label style={lbl}>기수 *</label>
-        <input style={inp} placeholder="예: 1기" value={ef.gen} onChange={e=>setEf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
-        <label style={lbl}>닉네임 *</label>
-        <input style={inp} placeholder="닉네임" value={ef.nick} onChange={e=>setEf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
-        <label style={lbl}>전화번호 끝 4자리 *</label>
-        <input style={inp} placeholder="예: 5678" maxLength={4} value={ef.phone} onChange={e=>setEf(f=>({...f,phone:e.target.value.replace(/\D/g,"")}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
-        {emsg && <div style={{color:"#C0392B",fontSize:13,marginBottom:10,fontWeight:600}}>{emsg}</div>}
-        <div style={{display:"flex",gap:10,marginTop:4}}>
-          <button onClick={onClose} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
-          <button onClick={doSave} disabled={saving} style={{...btn(PC),flex:2,opacity:saving?0.7:1,boxShadow:"0 4px 16px rgba(0,70,56,0.2)"}}>
-            {saving?"저장 중...":"✅ 저장"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function App(){
-  useEffect(()=>{
-    const s=document.createElement("script");s.src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";document.head.appendChild(s);
-  },[]);
-  useEffect(()=>{
-    window.history.pushState(null,"",window.location.href);
-    const h=()=>window.history.pushState(null,"",window.location.href);
-    window.addEventListener("popstate",h);return()=>window.removeEventListener("popstate",h);
-  },[]);
-  useEffect(()=>{
-    const saved=sessionStorage.getItem("laluppy_user");
-    const savedView=sessionStorage.getItem("laluppy_view");
-    if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
-    const savedId=localStorage.getItem("laluppy_savedId");
-    if(savedId){
-      try{
-        const {gen,nick,phone}=JSON.parse(savedId);
-        setLf(f=>({...f,gen:gen||"",nick:nick||"",phone:phone||""}));
-        setSaveId(true);
-      }catch{}
-    }
-  },[]);
-
-  const[view,setView]=useState("login");
-  const[adminMode,setAdminMode]=useState(false);
-  const[lf,setLf]=useState({gen:"",nick:"",phone:"",code:""});
-  const[saveId,setSaveId]=useState(false);
-  const[lerr,setLerr]=useState("");
-  const[me,setMe]=useState(null);
-  const[sp,setSp]=useState("notices");
-  const[myNotices,setMyNotices]=useState([]);
-  const[savedMonths,setSavedMonths]=useState([]);
-  const[openMonthsList,setOpenMonthsList]=useState([]);
-  const[openChaList,setOpenChaList]=useState([]);
-  const[yr,setYr]=useState(new Date().getFullYear());
-  const[mo,setMo]=useState(new Date().getMonth()+1);
-  const[selectedActCha,setSelectedActCha]=useState(1);
-  const[savedChas,setSavedChas]=useState([]);
-  const[act,setAct]=useState(null);
-  const[savMsg,setSavMsg]=useState("");
-  const[saving,setSaving]=useState(false);
-  const[myInquiries,setMyInquiries]=useState([]);
-  const[iqf,setIqf]=useState({title:"",content:""});
-  const[iqMsg,setIqMsg]=useState("");
-  const[iqSending,setIqSending]=useState(false);
-  const[myAddress,setMyAddress]=useState({name:"",phone:"",zonecode:"",address:"",addressDetail:""});
-  const[addrMsg,setAddrMsg]=useState("");
-  const[addrSaving,setAddrSaving]=useState(false);
-  const[addrEditMode,setAddrEditMode]=useState(false);
-  const[selectedCha,setSelectedCha]=useState(1);
-  const[selYr,setSelYr]=useState(new Date().getFullYear());
-  const[selMo,setSelMo]=useState(new Date().getMonth()+1);
-  const[availableProds,setAvailableProds]=useState([]);
-  const[mySelection,setMySelection]=useState(null);
-  const[selMsg,setSelMsg]=useState("");
-  const[canSelectProduct,setCanSelectProduct]=useState(false);
-  const[canSelectReason,setCanSelectReason]=useState("");
-  const[selConfirmProd,setSelConfirmProd]=useState(null);
-  const[atab,setAtab]=useState("supporters");
-  const[supps,setSupps]=useState([]);
-  const[nlp,setNlp]=useState([]);
-  const[nsc,setNsc]=useState([]);
-  const[nGrade,setNGrade]=useState(G.L);
-  const[nf,setNf]=useState({title:"",content:""});
-  const[nmsg,setNmsg]=useState("");
-  const[af,setAf]=useState({gen:"",nick:"",phone:""});
-  const[amsg,setAmsg]=useState("");
-  const[bulkMode,setBulkMode]=useState(false);
-  const[bulkSelected,setBulkSelected]=useState(new Set());
-  const[bulkTargetGrade,setBulkTargetGrade]=useState(G.S);
-  const[bulkMsg,setBulkMsg]=useState("");
-  const[bulkSaving,setBulkSaving]=useState(false);
-  const[viewSupp,setViewSupp]=useState(null);
-  const[viewActs,setViewActs]=useState([]);
-  const[loadingVA,setLoadingVA]=useState(false);
-  const[actYear,setActYear]=useState(new Date().getFullYear());
-  const[actMonth,setActMonth]=useState(new Date().getMonth()+1);
-  const[actGen,setActGen]=useState("전체");
-  const[actGrade,setActGrade]=useState("전체");
-  const[actSummary,setActSummary]=useState({});
-  const[loadingSum,setLoadingSum]=useState(false);
-  const[allInquiries,setAllInquiries]=useState([]);
-  const[selInquiry,setSelInquiry]=useState(null);
-  const[replyText,setReplyText]=useState("");
-  const[replyMsg,setReplyMsg]=useState("");
-  const[loadingIq,setLoadingIq]=useState(false);
-  const[prodGrade,setProdGrade]=useState(G.L);
-  const[prodYear,setProdYear]=useState(new Date().getFullYear());
-  const[prodMonth,setProdMonth]=useState(new Date().getMonth()+1);
-  const[prodCha,setProdCha]=useState(1);
-  const[prodList,setProdList]=useState([]);
-  const[newProd,setNewProd]=useState({name:"",code:""});
-  const[prodMsg,setProdMsg]=useState("");
-  const[newOpenMonth,setNewOpenMonth]=useState({year:new Date().getFullYear(),month:new Date().getMonth()+2>12?1:new Date().getMonth()+2});
-  const[openRefresh,setOpenRefresh]=useState(0);
-  const[excelPreview,setExcelPreview]=useState([]);
-  const[excelErr,setExcelErr]=useState("");
-  const[downloadingAct,setDownloadingAct]=useState(false);
-  const[downloadingSel,setDownloadingSel]=useState(false);
-  const[loadingPrevProd,setLoadingPrevProd]=useState(false);
-  // ── 회원정보 수정 모달 상태
-  const[editTarget,setEditTarget]=useState(null); // 수정 대상 써포터즈 객체
-  const[editMsg,setEditMsg]=useState("");
-  // ── 써포터즈 검색
-  const[suppSearch,setSuppSearch]=useState("");
-  const[suppSearchGrade,setSuppSearchGrade]=useState("전체"); // "전체" | "laroupi" | "laroupisecret"
-
-  useEffect(()=>{
-    if(view==="admin"){
-      db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
-      Promise.all([db.get("notices:laroupi"),db.get("notices:laroupisecret")]).then(([lp,sc])=>{setNlp(lp||[]);setNsc(sc||[]);});
-    }
-  },[view]);
-
-  useEffect(()=>{
-    if(me){
-      Promise.all([
-        db.get(`notices:${me.grade}`),
-        db.get(`address:${me.id}`),
-        me.grade===G.L ? db.get(`openCha:laroupi`) : db.get(`openMonths:${me.grade}`)
-      ]).then(([notices,addr,openData])=>{
-        setMyNotices(notices||[]);
-        if(addr) setMyAddress(addr);
-        if(me.grade===G.L) setOpenChaList(openData||[]);
-        else setOpenMonthsList(openData||[]);
-      });
-      loadMySaved(me.id);
-      loadMyInquiries(me.id);
-    }
-  },[me]);
-
-  useEffect(()=>{
-    if(me&&sp==="product"){
-      Promise.all([loadAvailableProds(),loadMySelection(),loadCanSelect()]);
-    }
-  },[me,sp,selectedCha,selYr,selMo]);
-
-  useEffect(()=>{
-    if(atab==="products"&&view==="admin")loadAdminProds();
-  },[atab,prodGrade,prodYear,prodMonth,prodCha]);
-
-  const loadMySaved=async uid=>{
-    if(me?.grade===G.L){
-      const keys=await db.list(`activity:${uid}:cha:`);
-      setSavedChas(keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n)));
-    } else {
-      const keys=await db.list(`activity:${uid}:`);
-      setSavedMonths(keys.map(k=>{const p=k.split(":");return{year:+p[2],month:+p[3]};}).sort((a,b)=>b.year-a.year||b.month-a.month));
-    }
-  };
-
-  const selectCha=async cha=>{
-    if(!openChaList.includes(cha))return;
-    setSelectedActCha(cha);
-    const saved=await db.get(`activity:${me.id}:cha:${cha}`);
-    setAct(saved||blankAct(me.grade));setSp("activity");
-  };
-  const loadMyInquiries=async uid=>setMyInquiries(await db.get(`inquiries:${uid}`)||[]);
-
-  const loadAvailableProds=async()=>{
-    if(!me)return;
-    if(me.grade===G.L) setAvailableProds(await db.get(`products:laroupi:cha:${selectedCha}`)||[]);
-    else setAvailableProds(await db.get(`products:${me.grade}:${selYr}:${selMo}`)||[]);
-  };
-
-  const loadMySelection=async()=>{
-    if(!me)return;
-    if(me.grade===G.L) setMySelection(await db.get(`selection:${me.id}:cha:${selectedCha}`)||null);
-    else setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);
-  };
-
-  useEffect(()=>{
-    if(me&&me.grade===G.S&&sp==="product") setMySelection(null);
-  },[selYr,selMo]);
-
-  useEffect(()=>{
-    if(me&&me.grade===G.L&&sp==="product") setMySelection(null);
-  },[selectedCha]);
-
-  const loadAdminProds=async()=>{
-    if(prodGrade===G.L) setProdList(await db.get(`products:laroupi:cha:${prodCha}`)||[]);
-    else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
-  };
-
-  const loadCanSelect=async()=>{
-    if(!me)return;
-    if(me.grade===G.L){
-      const keys=await db.list(`selection:${me.id}:cha:`);
-      if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
-      const lastCha=Math.max(...chaNums);
-      const[lastSel,actKeys]=await Promise.all([
-        db.get(`selection:${me.id}:cha:${lastCha}`),
-        db.list(`activity:${me.id}:`)
-      ]);
-      if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const{selYear,selMonth}=lastSel;
-      const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
-      const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
-      const hasSubmitted=acts.some(a=>a?.submitted);
-      if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
-      else{setCanSelectProduct(false);setCanSelectReason(`${lastCha}차 신청 후 활동을 먼저 제출해 주세요.`);}
-    } else {
-      const keys=await db.list(`selection:${me.id}:`);
-      const filtered=keys.filter(k=>!k.includes(":cha:"));
-      if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
-      sels.sort((a,b)=>b.year-a.year||b.month-a.month);
-      const last=sels[0];
-      const lastAct=await db.get(`activity:${me.id}:${last.year}:${last.month}`);
-      if(lastAct?.submitted){setCanSelectProduct(true);setCanSelectReason("");}
-      else{setCanSelectProduct(false);setCanSelectReason(`${last.year}년 ${last.month}월 활동을 먼저 제출해 주세요.`);}
-    }
-  };
-
-  const isMonthAccessible=(year,month)=>{
-    const now=new Date();const curY=now.getFullYear();const curM=now.getMonth()+1;
-    if(year<curY||(year===curY&&month<=curM))return true;
-    return openMonthsList.some(om=>om.year===year&&om.month===month);
-  };
-
-  const loadActSummary=async(year,suppList)=>{
-    const list=suppList!==undefined?suppList:supps;
-    if(!list.length)return;
-    setLoadingSum(true);
-    const entries=await Promise.all(list.map(async s=>{
-      const keys=await db.list(`activity:${s.id}:${year}:`);
-      const acts=await Promise.all(keys.map(k=>db.get(k)));
-      const monthData={};
-      acts.forEach((d,i)=>{
-        if(d){
-          const month=+keys[i].split(":")[3];
-          const bc=(d.blogs||[]).filter(b=>b.link).length;
-          const vc=(d.virals||[]).filter(v=>v.link||v.photo).length;
-          const ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
-          monthData[month]={blogs:bc,virals:vc,extras:ec,total:bc+vc+ec,submitted:d.submitted||false};
-        }
-      });
-      return[s.id,monthData];
-    }));
-    setActSummary(Object.fromEntries(entries));
-    setLoadingSum(false);
-  };
-
-  const doLogin=async()=>{
-    if(adminMode){
-      if(lf.code===ADMIN_CODE){setView("admin");setLerr("");sessionStorage.setItem("laluppy_view","admin");}
-      else setLerr("관리자 코드가 올바르지 않습니다.");
-      return;
-    }
-    if(!lf.gen||!lf.nick||!lf.phone){setLerr("모든 항목을 입력해 주세요.");return;}
-    const list=await db.get("supporters")||[];
-    const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
-    if(found){
-      if(saveId) localStorage.setItem("laluppy_savedId",JSON.stringify({gen:lf.gen.trim(),nick:lf.nick.trim(),phone:lf.phone.trim()}));
-      else localStorage.removeItem("laluppy_savedId");
-      setMe(found);setView("supporter");setLerr("");setSp("notices");
-      sessionStorage.setItem("laluppy_user",JSON.stringify(found));
-      sessionStorage.setItem("laluppy_view","supporter");
-    }
-    else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
-  };
-
-  const selectMonth=async(year,month)=>{
-    if(!isMonthAccessible(year,month))return;
-    setYr(year);setMo(month);
-    const saved=await db.get(`activity:${me.id}:${year}:${month}`);
-    setAct(saved||blankAct(me.grade));setSp("activity");
-  };
-
-  const doSave=async(submit=false)=>{
-    const missingIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
-    if(missingIdx!==-1){setSavMsg(`⚠️ 바이럴 ${missingIdx+1}번 사진이 없습니다.`);setTimeout(()=>setSavMsg(""),3000);return;}
-    setSaving(true);
-    const data={...act,year:yr,month:mo,submitted:submit?true:(act.submitted||false)};
-    const ok=await db.set(`activity:${me.id}:${yr}:${mo}`,data);
-    if(ok){setAct(data);loadMySaved(me.id);}
-    setSavMsg(ok?(submit?"✅ 최종 제출 완료!":"저장 완료! ✓"):"저장에 실패했습니다.");
-    setTimeout(()=>setSavMsg(""),3000);setSaving(false);
-  };
-
-  const saveAddress=async()=>{
-    if(!myAddress.name){setAddrMsg("수령인 이름을 입력해 주세요.");return;}
-    if(!myAddress.phone){setAddrMsg("연락처를 입력해 주세요.");return;}
-    if(!myAddress.address){setAddrMsg("주소를 검색해 주세요.");return;}
-    setAddrSaving(true);
-    const ok=await db.set(`address:${me.id}`,myAddress);
-    setAddrMsg(ok?"저장되었습니다! ✓":"저장에 실패했습니다.");
-    setTimeout(()=>setAddrMsg(""),2500);setAddrSaving(false);
-  };
-
-  const openPostcode=()=>{
-    if(!window.daum){alert("주소 검색 서비스를 불러오는 중입니다.");return;}
-    new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
-  };
-
-  const handleSelectProduct=prod=>{
-    if(!canSelectProduct)return;
-    setSelConfirmProd(prod);
-  };
-
-  const confirmProductSelection=async()=>{
-    const prod=selConfirmProd;
-    if(!prod)return;
-    const now=new Date();
-    const sel=me.grade===G.L
-      ?{productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,selYear:now.getFullYear(),selMonth:now.getMonth()+1}
-      :{productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
-    const key=me.grade===G.L?`selection:${me.id}:cha:${selectedCha}`:`selection:${me.id}:${selYr}:${selMo}`;
-    const ok=await db.set(key,sel);
-    setSelConfirmProd(null);
-    if(ok){setMySelection(sel);setSelMsg("제품이 최종 신청되었습니다! ✓");}
-    else setSelMsg("저장에 실패했습니다.");
-    setTimeout(()=>setSelMsg(""),2500);
-  };
-
-  const addProduct=async()=>{
-    if(!newProd.name||!newProd.code){setProdMsg("제품명과 코드를 입력해 주세요.");return;}
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
-    const list=[...prodList,{id:`p${Date.now()}`,name:newProd.name,code:newProd.code}];
-    const ok=await db.set(key,list);
-    if(ok){setProdList(list);setNewProd({name:"",code:""});setProdMsg("제품 등록 완료! ✓");}
-    setTimeout(()=>setProdMsg(""),2000);
-  };
-  const delProduct=async id=>{
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
-    const list=prodList.filter(p=>p.id!==id);await db.set(key,list);setProdList(list);
-  };
-
-  const loadPrevMonthProds=async()=>{
-    setLoadingPrevProd(true);
-    let prevYear=prodYear,prevMonth=prodMonth-1;
-    if(prevMonth<1){prevMonth=12;prevYear=prodYear-1;}
-    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha-1}`:`products:${prodGrade}:${prevYear}:${prevMonth}`;
-    const prev=await db.get(key)||[];
-    if(prev.length===0){setProdMsg("지난 기간 등록된 제품이 없습니다.");setTimeout(()=>setProdMsg(""),2500);setLoadingPrevProd(false);return;}
-    const currentList=[...prodList];
-    let added=0;
-    for(const p of prev){
-      if(!currentList.find(c=>c.code===p.code)){
-        currentList.push({...p,id:`p${Date.now()}_${Math.random().toString(36).slice(2,5)}`});
-        added++;
-      }
-    }
-    const saveKey=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
-    await db.set(saveKey,currentList);
-    setProdList(currentList);
-    setProdMsg(`${added}개 불러오기 완료! (중복 ${prev.length-added}개 제외)`);
-    setTimeout(()=>setProdMsg(""),3000);
-    setLoadingPrevProd(false);
-  };
-
-  const toggleOpenCha=async cha=>{
-    const list=await db.get(`openCha:laroupi`)||[];
-    const isOpen=list.includes(cha);
-    const next=isOpen?list.filter(c=>c!==cha):[...list,cha].sort((a,b)=>a-b);
-    await db.set(`openCha:laroupi`,next);
-    setOpenRefresh(r=>r+1);
-    setProdMsg(`${cha}차 ${isOpen?"클로즈":"오픈"} 완료! ✓`);
-    setTimeout(()=>setProdMsg(""),1500);
-  };
-
-  const addOpenMonth=async()=>{
-    const list=await db.get(`openMonths:${prodGrade}`)||[];
-    if(list.find(om=>om.year===newOpenMonth.year&&om.month===newOpenMonth.month)){setProdMsg("이미 오픈된 달입니다.");setTimeout(()=>setProdMsg(""),2000);return;}
-    const next=[...list,{id:`om${Date.now()}`,year:newOpenMonth.year,month:newOpenMonth.month}];
-    await db.set(`openMonths:${prodGrade}`,next);setOpenRefresh(r=>r+1);
-    setProdMsg(`${newOpenMonth.year}년 ${newOpenMonth.month}월 오픈 완료! ✓`);setTimeout(()=>setProdMsg(""),2000);
-  };
-
-  const uploadPhoto=async(setter,file)=>{if(!file)return;setter(await compressImage(file));};
-  const updBlog=(i,v)=>setAct(a=>({...a,blogs:a.blogs.map((b,j)=>j===i?{link:v}:b)}));
-  const addBlog=()=>setAct(a=>({...a,blogs:[...a.blogs,{link:""}]}));
-  const delBlog=i=>setAct(a=>({...a,blogs:a.blogs.filter((_,j)=>j!==i)}));
-  const updViral=(i,f,v)=>setAct(a=>({...a,virals:a.virals.map((x,j)=>j===i?{...x,[f]:v}:x)}));
-  const addViral=()=>setAct(a=>({...a,virals:[...a.virals,{link:"",photo:null}]}));
-  const delViral=i=>setAct(a=>({...a,virals:a.virals.filter((_,j)=>j!==i)}));
-  const updExtra=(i,f,v)=>setAct(a=>({...a,extras:a.extras.map((x,j)=>j===i?{...x,[f]:v}:x)}));
-  const addExtra=()=>setAct(a=>({...a,extras:[...a.extras,{link:"",photo:null}]}));
-  const delExtra=i=>setAct(a=>({...a,extras:a.extras.filter((_,j)=>j!==i)}));
-
-  const sendInquiry=async()=>{
-    if(!iqf.title||!iqf.content){setIqMsg("제목과 내용을 입력해 주세요.");return;}
-    setIqSending(true);
-    const list=await db.get(`inquiries:${me.id}`)||[];
-    const next=[{id:`iq${Date.now()}`,title:iqf.title,content:iqf.content,date:new Date().toLocaleDateString("ko-KR"),reply:null,replyDate:null},...list];
-    if(await db.set(`inquiries:${me.id}`,next)){setMyInquiries(next);setIqf({title:"",content:""});setIqMsg("문의가 전송되었습니다! ✓");}
-    else setIqMsg("전송에 실패했습니다.");
-    setTimeout(()=>setIqMsg(""),2500);setIqSending(false);
-  };
-
-  const addSupporter=async()=>{
-    const{gen,nick,phone}=af;if(!gen||!nick||!phone){setAmsg("모든 항목을 입력해 주세요.");return;}
-    const list=await db.get("supporters")||[];
-    if(list.find(s=>s.gen===gen.trim()&&s.nick===nick.trim())){setAmsg("동일 기수/닉네임이 존재합니다.");return;}
-    const next=[...list,{id:`s${Date.now()}`,gen:gen.trim(),nick:nick.trim(),phone:phone.trim(),grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")}];
-    await db.set("supporters",next);setSupps(next);setAf({gen:"",nick:"",phone:""});setAmsg("등록 완료! ✓");setTimeout(()=>setAmsg(""),2000);
-  };
-  const changeGrade=async(id,grade)=>{const next=supps.map(s=>s.id===id?{...s,grade}:s);await db.set("supporters",next);setSupps(next);};
-
-  // ── 회원정보 수정 저장 핸들러
-  const handleEditSave = async (id, fields) => {
-    const next = supps.map(s => s.id === id ? {...s, ...fields} : s);
-    const ok = await db.set("supporters", next);
-    if(ok){
-      setSupps(next);
-      setEditTarget(null);
-      setEditMsg(`✅ ${fields.nick} 회원정보가 수정되었습니다.`);
-      setTimeout(()=>setEditMsg(""), 3000);
-    } else {
-      setEditMsg("저장에 실패했습니다.");
-      setTimeout(()=>setEditMsg(""), 2500);
-    }
-  };
-
-  const toggleSelectByGen=gen=>{
-    const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
-    const allSelected=ids.every(id=>bulkSelected.has(id));
-    setBulkSelected(prev=>{
-      const next=new Set(prev);
-      if(allSelected) ids.forEach(id=>next.delete(id));
-      else ids.forEach(id=>next.add(id));
-      return next;
-    });
-  };
-  const toggleSelectAll=()=>{
-    if(bulkSelected.size===supps.length) setBulkSelected(new Set());
-    else setBulkSelected(new Set(supps.map(s=>s.id)));
-  };
-  const applyBulkGrade=async()=>{
-    if(bulkSelected.size===0){setBulkMsg("변경할 회원을 선택해 주세요.");setTimeout(()=>setBulkMsg(""),2000);return;}
-    if(!window.confirm(`선택한 ${bulkSelected.size}명을 ${GN[bulkTargetGrade]}으로 변경하시겠습니까?`))return;
-    setBulkSaving(true);
-    const next=supps.map(s=>bulkSelected.has(s.id)?{...s,grade:bulkTargetGrade}:s);
-    const ok=await db.set("supporters",next);
-    if(ok){setSupps(next);setBulkSelected(new Set());setBulkMsg(`✅ ${bulkSelected.size}명 변경 완료!`);}
-    else setBulkMsg("저장에 실패했습니다.");
-    setBulkSaving(false);setTimeout(()=>setBulkMsg(""),3000);
-  };
-  const delSupporter=async id=>{if(!window.confirm("정말 삭제하시겠습니까?"))return;const next=supps.filter(s=>s.id!==id);await db.set("supporters",next);setSupps(next);if(viewSupp?.id===id)setViewSupp(null);};
-  const saveNotice=async()=>{
-    if(!nf.title||!nf.content){setNmsg("제목과 내용을 입력해 주세요.");return;}
-    const list=nGrade===G.L?[...nlp]:[...nsc];list.unshift({id:`n${Date.now()}`,title:nf.title,content:nf.content,date:new Date().toLocaleDateString("ko-KR")});
-    await db.set(`notices:${nGrade}`,list);nGrade===G.L?setNlp(list):setNsc(list);
-    setNf({title:"",content:""});setNmsg("등록 완료! ✓");setTimeout(()=>setNmsg(""),2000);
-  };
-  const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set(`notices:${grade}`,list);grade===G.L?setNlp(list):setNsc(list);};
-
-  const openSuppActs=async supp=>{
-    setViewSupp(supp);setLoadingVA(true);
-    const keys=await db.list(`activity:${supp.id}:`);
-    const acts=(await Promise.all(keys.map(k=>db.get(k)))).filter(Boolean);
-    acts.sort((a,b)=>b.year-a.year||b.month-a.month);
-    setViewActs(acts);setLoadingVA(false);
-  };
-
-  const loadAllInquiries=async()=>{
-    setLoadingIq(true);
-    const list=await db.get("supporters")||[];
-    const allIqs=await Promise.all(list.map(s=>db.get(`inquiries:${s.id}`).then(iqs=>(iqs||[]).map(iq=>({...iq,suppId:s.id,suppName:`${s.gen} · ${s.nick}`,grade:s.grade})))));
-    const result=allIqs.flat().sort((a,b)=>b.id.localeCompare(a.id));
-    setAllInquiries(result);setLoadingIq(false);
-  };
-
-  const sendReply=async()=>{
-    if(!replyText.trim()){setReplyMsg("답변 내용을 입력해 주세요.");return;}
-    const iqs=await db.get(`inquiries:${selInquiry.suppId}`)||[];
-    const next=iqs.map(iq=>iq.id===selInquiry.id?{...iq,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")}:iq);
-    if(await db.set(`inquiries:${selInquiry.suppId}`,next)){
-      const updated={...selInquiry,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")};
-      setSelInquiry(updated);setAllInquiries(prev=>prev.map(iq=>iq.id===selInquiry.id?updated:iq));
-      setReplyMsg("답변 등록 완료! ✓");setReplyText("");
-    }else setReplyMsg("등록에 실패했습니다.");
-    setTimeout(()=>setReplyMsg(""),2500);
-  };
-  const downloadTemplate=()=>{
-    const wb=XLSX.utils.book_new();
-    const ws=XLSX.utils.aoa_to_sheet([["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]]);
-    ws["!cols"]=[{wch:8},{wch:12},{wch:14},{wch:12},{wch:16},{wch:10},{wch:30},{wch:20}];
-    XLSX.utils.book_append_sheet(wb,ws,"써포터즈목록");XLSX.writeFile(wb,"써포터즈_등록_양식.xlsx");
-  };
-  const handleExcelUpload=async file=>{
-    setExcelErr("");setExcelPreview([]);
-    try{
-      const ab=await file.arrayBuffer();const wb=XLSX.read(ab,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
-      const parsed=rows.slice(1).filter(r=>r[0]||r[1]||r[2]).map(r=>({gen:String(r[0]||"").trim(),nick:String(r[1]||"").trim(),phone:String(r[2]||"").trim(),name:String(r[3]||"").trim(),deliveryPhone:String(r[4]||"").trim(),zonecode:String(r[5]||"").trim(),address:String(r[6]||"").trim(),addressDetail:String(r[7]||"").trim()})).filter(r=>r.gen&&r.nick&&r.phone);
-      if(!parsed.length){setExcelErr("유효한 데이터가 없습니다.");return;}setExcelPreview(parsed);
-    }catch{setExcelErr("파일을 읽을 수 없습니다.");}
-  };
-  const confirmExcelUpload=async()=>{
-    const existing=await db.get("supporters")||[];let added=0;
-    const newMembers=excelPreview.filter(p=>!existing.find(s=>s.gen===p.gen&&s.nick===p.nick))
-      .map(p=>({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
-    await Promise.all(newMembers.map(ns=>ns._addr?db.set(`address:${ns.id}`,ns._addr):Promise.resolve()));
-    const clean=newMembers.map(({_addr,...rest})=>rest);
-    added=clean.length;
-    const next=[...existing,...clean];
-    await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
-  };
-
+  // ── 활동내역 엑셀 (선택한 연도·월·등급 기준)
   const downloadActivityExcel=async()=>{
     setDownloadingAct(true);const wb=XLSX.utils.book_new();
-    const targetSupps=supps.filter(s=>(actGrade==="전체"||s.grade===actGrade));
+    const targetSupps=supps.filter(s=>actGrade==="전체"||s.grade===actGrade);
     const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     const extra=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     await Promise.all(targetSupps.map(async s=>{
       const grade=GN[s.grade];
-      const[addr,d]=await Promise.all([db.get(`address:${s.id}`),db.get(`activity:${s.id}:${actYear}:${actMonth}`)]);
+      const[addr,d]=await Promise.all([db.get("address:"+s.id),db.get("activity:"+s.id+":"+actYear+":"+actMonth)]);
       const addrData=addr||{};
       if(!d)return;
-      const selKeys=s.grade===G.L?await db.list(`selection:${s.id}:cha:`):[];
+      const selKeys=s.grade===G.L?await db.list("selection:"+s.id+":cha:"):[];
       const selDatas=await Promise.all(selKeys.map(ck=>db.get(ck)));
       const selMap={};
       selDatas.forEach(cs=>{if(cs)selMap[cs.selYear+"_"+cs.selMonth]={productName:cs.productName,productCode:cs.productCode,cha:cs.cha+"차"};});
@@ -1204,6 +605,7 @@ export default function App(){
     setDownloadingAct(false);
   };
 
+  // ── 신청상품 취합 (선택한 연도·월·등급 기준)
   const downloadSelectionExcel=async()=>{
     setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
@@ -1242,14 +644,15 @@ export default function App(){
     XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+actYear+"년"+actMonth+"월_"+gradeLabel+".xlsx");
     setDownloadingSel(false);
   };
+
   const PC=BRAND.primary,BG="#FAF8F5",CARD="#fff",BORDER="#E8E0D5",TEXT="#2C2C2C",MUTED="#888";
-  const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
-  const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
+  const inp={width:"100%",padding:"10px 14px",border:"1px solid "+BORDER,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
+  const btn=(bg,color,sm)=>({background:bg,color:color||"#fff",border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
   const card={background:CARD,borderRadius:14,padding:18,boxShadow:"0 2px 10px rgba(0,0,0,0.06)",marginBottom:14};
   const tag=g=>({display:"inline-block",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:GB[g],color:GC[g]});
   const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
   const ctr={maxWidth:500,margin:"0 auto",padding:"0 16px"};
-  const sel={border:`1px solid ${BORDER}`,borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:PC,background:BRAND.primaryLight,cursor:"pointer",outline:"none"};
+  const sel={border:"1px solid "+BORDER,borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:PC,background:BRAND.primaryLight,cursor:"pointer",outline:"none"};
 
   const Logo=({dark})=>BRAND.logoUrl
     ?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:dark?32:28,objectFit:"contain",filter:dark?"brightness(0) invert(1)":"none"}}/>
@@ -1259,11 +662,11 @@ export default function App(){
     <div style={{marginTop:6,marginBottom:4}}>
       {src?(
         <div style={{position:"relative",display:"inline-block"}}>
-          <img src={src} alt="" style={{maxWidth:180,maxHeight:140,borderRadius:8,border:`1px solid ${BORDER}`,objectFit:"cover",display:"block"}}/>
+          <img src={src} alt="" style={{maxWidth:180,maxHeight:140,borderRadius:8,border:"1px solid "+BORDER,objectFit:"cover",display:"block"}}/>
           <button onClick={()=>setter(null)} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.55)",color:"#fff",border:"none",borderRadius:12,width:22,height:22,cursor:"pointer",fontSize:13}}>×</button>
         </div>
       ):(
-        <label style={{display:"block",border:`1.5px dashed ${required?"#C0392B":BORDER}`,borderRadius:8,padding:"10px 14px",textAlign:"center",cursor:"pointer",fontSize:12,color:required?"#C0392B":MUTED,background:"#FAFAFA"}}>
+        <label style={{display:"block",border:"1.5px dashed "+(required?"#C0392B":BORDER),borderRadius:8,padding:"10px 14px",textAlign:"center",cursor:"pointer",fontSize:12,color:required?"#C0392B":MUTED,background:"#FAFAFA"}}>
           📷 사진 업로드{required?" (필수 *)":""}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&uploadPhoto(setter,e.target.files[0])}/>
         </label>
@@ -1285,7 +688,7 @@ export default function App(){
           <div style={{background:BRAND.primaryLight,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
             <div style={{fontWeight:800,fontSize:15,color:PC,marginBottom:4}}>{selConfirmProd.name}</div>
             <div style={{fontSize:12,color:MUTED}}>제품 코드: {selConfirmProd.code}</div>
-            <div style={{fontSize:12,color:MUTED,marginTop:4}}>{isL?`${selectedCha}차 신청`:`${selYr}년 ${selMo}월 신청`}</div>
+            <div style={{fontSize:12,color:MUTED,marginTop:4}}>{isL?selectedCha+"차 신청":selYr+"년 "+selMo+"월 신청"}</div>
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setSelConfirmProd(null)} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
@@ -1308,16 +711,18 @@ export default function App(){
           <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:20}}>
             {[false,true].map(isA=>(<button key={String(isA)} onClick={()=>{setAdminMode(isA);setLerr("");}} style={{flex:1,padding:"9px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:adminMode===isA?CARD:"transparent",color:adminMode===isA?PC:MUTED,boxShadow:adminMode===isA?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{isA?"관리자":"써포터즈"}</button>))}
           </div>
-          {!adminMode?(<><label style={lbl}>기수</label><input style={inp} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>닉네임</label><input style={inp} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/><label style={lbl}>전화번호 끝 4자리</label><input style={inp} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+          {!adminMode?(<>
+            <label style={lbl}>기수</label><input style={inp} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+            <label style={lbl}>닉네임</label><input style={inp} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+            <label style={lbl}>전화번호 끝 4자리</label><input style={inp} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
             <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:14,userSelect:"none"}}>
-              <div onClick={()=>setSaveId(v=>!v)} style={{width:20,height:20,borderRadius:5,border:`2px solid ${saveId?PC:BORDER}`,background:saveId?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+              <div onClick={()=>setSaveId(v=>!v)} style={{width:20,height:20,borderRadius:5,border:"2px solid "+(saveId?PC:BORDER),background:saveId?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
                 {saveId&&<span style={{color:"#fff",fontSize:13,lineHeight:1}}>✓</span>}
               </div>
               <span style={{fontSize:13,color:saveId?PC:MUTED,fontWeight:saveId?700:400}} onClick={()=>setSaveId(v=>!v)}>아이디 저장</span>
               {saveId&&<span style={{fontSize:11,color:MUTED,marginLeft:"auto"}}>📱 이 기기에 저장됨</span>}
             </label>
-          </>)
-            :(<><label style={lbl}>관리자 코드</label><input style={inp} type="password" value={lf.code} onChange={e=>setLf(f=>({...f,code:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/></>)}
+          </>):(<><label style={lbl}>관리자 코드</label><input style={inp} type="password" value={lf.code} onChange={e=>setLf(f=>({...f,code:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}/></>)}
           {lerr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:10,textAlign:"center"}}>{lerr}</div>}
           <button onClick={doLogin} style={{...btn(PC),width:"100%",marginTop:4}}>로그인</button>
         </div>
@@ -1331,7 +736,7 @@ export default function App(){
     return(
       <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
         <ConfirmModal/>
-        <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
+        <div style={{background:CARD,borderBottom:"1px solid "+BORDER,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
           <div><Logo/><div style={{fontSize:11,color:MUTED,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
             {[["notices","공지"],["months","활동"],["product","제품"],["myinfo","내정보"],["inquiry","문의"]].map(([id,label])=>(<button key={id} onClick={()=>setSp(id)} style={btn(sp===id?PC:"#EEE8E0",sp===id?"#fff":TEXT,true)}>{label}</button>))}
@@ -1357,7 +762,7 @@ export default function App(){
                   {LACHAS.map(cha=>{
                     const saved=savedChas.includes(cha);const isOpen=openChaList.includes(cha);
                     return(<button key={cha} onClick={()=>isOpen&&selectCha(cha)}
-                      style={{padding:"22px 0",borderRadius:12,border:`2px solid ${!isOpen?"#EEE":saved?PC:BORDER}`,background:!isOpen?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!isOpen?"#CCC":saved?PC:TEXT,fontWeight:800,cursor:isOpen?"pointer":"not-allowed",fontSize:18,position:"relative",transition:"all 0.15s"}}>
+                      style={{padding:"22px 0",borderRadius:12,border:"2px solid "+(!isOpen?"#EEE":saved?PC:BORDER),background:!isOpen?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!isOpen?"#CCC":saved?PC:TEXT,fontWeight:800,cursor:isOpen?"pointer":"not-allowed",fontSize:18,position:"relative",transition:"all 0.15s"}}>
                       {cha}차
                       {!isOpen&&<div style={{fontSize:11,color:"#CCC",fontWeight:400}}>🔒 미오픈</div>}
                       {isOpen&&saved&&<span style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:4,background:PC,display:"block"}}/>}
@@ -1376,7 +781,7 @@ export default function App(){
                   {MONTHS.map(m=>{
                     const saved=savedMonths.some(s=>s.year===yr&&s.month===m);const accessible=isMonthAccessible(yr,m);
                     return(<button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
-                      style={{padding:"10px 0",borderRadius:10,border:`2px solid ${!accessible?"#EEE":saved?PC:BORDER}`,background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
+                      style={{padding:"10px 0",borderRadius:10,border:"2px solid "+(!accessible?"#EEE":saved?PC:BORDER),background:!accessible?"#F5F5F5":saved?BRAND.primaryLight:CARD,color:!accessible?"#CCC":saved?PC:TEXT,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
                       {m}월{!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
                       {accessible&&saved&&<span style={{position:"absolute",top:4,right:4,width:6,height:6,borderRadius:3,background:PC,display:"block"}}/>}
                     </button>);
@@ -1389,7 +794,7 @@ export default function App(){
           {sp==="activity"&&act&&(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
               <button onClick={()=>setSp("months")} style={btn("#EEE8E0",TEXT,true)}>← {isL?"차수":"월"} 선택</button>
-              <div style={{fontWeight:800,fontSize:16}}>{isL?`${selectedActCha}차 활동`:`${yr}년 ${mo}월`}</div>
+              <div style={{fontWeight:800,fontSize:16}}>{isL?selectedActCha+"차 활동":yr+"년 "+mo+"월"}</div>
               <span style={tag(me.grade)}>{GN[me.grade]}</span>
               {act.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:"#E8F5E9",color:"#2E7D32"}}>✅ 제출완료</span>}
             </div>
@@ -1400,7 +805,7 @@ export default function App(){
             </div>)}
             <div style={card}>
               <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📣 바이럴</div>
-              {act.virals.map((v,i)=>(<div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.virals.length-1?`1px solid ${BORDER}`:"none"}}>
+              {act.virals.map((v,i)=>(<div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.virals.length-1?"1px solid "+BORDER:"none"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><label style={lbl}>바이럴 {i+1} {i<5&&<span style={{color:"#C0392B"}}>*</span>}</label>{i>=5&&<button onClick={()=>delViral(i)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>}</div>
                 <input style={inp} placeholder="링크 입력" value={v.link} onChange={e=>updViral(i,"link",e.target.value)}/>
                 {photoField(v.photo,val=>updViral(i,"photo",val),true)}
@@ -1411,7 +816,7 @@ export default function App(){
               <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>📌 기타 <span style={{fontWeight:400,fontSize:12,color:MUTED}}>(선택)</span></div>
               <div style={{fontSize:12,color:MUTED,marginBottom:14}}>링크 또는 사진 중 하나 이상 입력</div>
               {act.extras.length===0&&<div style={{textAlign:"center",color:MUTED,fontSize:13,padding:"10px 0"}}>+ 버튼으로 추가하세요</div>}
-              {act.extras.map((e,i)=>(<div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.extras.length-1?`1px solid ${BORDER}`:"none"}}>
+              {act.extras.map((e,i)=>(<div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.extras.length-1?"1px solid "+BORDER:"none"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><label style={lbl}>기타 {i+1}</label><button onClick={()=>delExtra(i)} style={btn("#FDECEA","#C0392B",true)}>삭제</button></div>
                 <input style={inp} placeholder="링크 입력 (선택)" value={e.link||""} onChange={ev=>updExtra(i,"link",ev.target.value)}/>
                 {photoField(e.photo,val=>updExtra(i,"photo",val),false)}
@@ -1444,7 +849,7 @@ export default function App(){
                     {LACHAS.map(cha=>{
                       const isOpen=openChaList.includes(cha);const isSel=selectedCha===cha;
                       return(<button key={cha} onClick={()=>isOpen&&setSelectedCha(cha)}
-                        style={{padding:"10px 16px",borderRadius:10,border:`2px solid ${isSel?PC:isOpen?BORDER:"#EEE"}`,background:isSel?PC:isOpen?CARD:"#F5F5F5",color:isSel?"#fff":isOpen?TEXT:"#CCC",fontWeight:700,fontSize:14,cursor:isOpen?"pointer":"not-allowed",minWidth:52}}>
+                        style={{padding:"10px 16px",borderRadius:10,border:"2px solid "+(isSel?PC:isOpen?BORDER:"#EEE"),background:isSel?PC:isOpen?CARD:"#F5F5F5",color:isSel?"#fff":isOpen?TEXT:"#CCC",fontWeight:700,fontSize:14,cursor:isOpen?"pointer":"not-allowed",minWidth:52}}>
                         {cha}차{!isOpen&&<div style={{fontSize:9}}>🔒</div>}
                       </button>);
                     })}
@@ -1458,7 +863,7 @@ export default function App(){
                 </div>
               )}
               {mySelection&&(<div style={{padding:"10px 14px",background:BRAND.primaryLight,borderRadius:8,marginBottom:14}}>
-                <div style={{fontSize:11,color:PC,fontWeight:700,marginBottom:2}}>✅ {isL?`${selectedCha}차`:`${selYr}년 ${selMo}월`} 선택된 제품</div>
+                <div style={{fontSize:11,color:PC,fontWeight:700,marginBottom:2}}>✅ {isL?selectedCha+"차":selYr+"년 "+selMo+"월"} 선택된 제품</div>
                 <div style={{fontWeight:700}}>{mySelection.productName}</div>
                 <div style={{fontSize:12,color:MUTED}}>코드: {mySelection.productCode}</div>
               </div>)}
@@ -1469,7 +874,7 @@ export default function App(){
                     const isSelected=mySelection?.productId===p.id;
                     const disabled=!canSelectProduct||!!mySelection;
                     return(<div key={p.id} onClick={()=>!disabled&&handleSelectProduct(p)}
-                      style={{padding:"14px 16px",borderRadius:10,border:`2px solid ${isSelected?PC:BORDER}`,background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled&&!isSelected?0.6:1}}>
+                      style={{padding:"14px 16px",borderRadius:10,border:"2px solid "+(isSelected?PC:BORDER),background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled&&!isSelected?0.6:1}}>
                       <div><div style={{fontWeight:700,fontSize:14,color:disabled&&!isSelected?MUTED:TEXT}}>{p.name}</div><div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div></div>
                       {isSelected?<span style={{color:PC,fontWeight:700,fontSize:18}}>✓</span>:disabled?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>신청불가</span>:<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
                     </div>);
@@ -1512,7 +917,7 @@ export default function App(){
             </div>
             <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>내 문의 내역 ({myInquiries.length}건)</div>
             {myInquiries.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32,fontSize:13}}>아직 문의 내역이 없습니다.</div>
-              :myInquiries.map(iq=>(<div key={iq.id} style={{...card,borderLeft:`3px solid ${iq.reply?PC:BORDER}`}}>
+              :myInquiries.map(iq=>(<div key={iq.id} style={{...card,borderLeft:"3px solid "+(iq.reply?PC:BORDER)}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}><div style={{fontWeight:700,fontSize:14}}>{iq.title}</div><span style={{fontSize:11,padding:"2px 8px",borderRadius:10,fontWeight:700,background:iq.reply?BRAND.primaryLight:"#F5F5F5",color:iq.reply?PC:MUTED,whiteSpace:"nowrap",marginLeft:8}}>{iq.reply?"답변완료":"답변대기"}</span></div>
                 <div style={{fontSize:13,color:MUTED,marginBottom:6,whiteSpace:"pre-wrap"}}>{iq.content}</div>
                 <div style={{fontSize:11,color:MUTED}}>{iq.date}</div>
@@ -1527,23 +932,15 @@ export default function App(){
   // ── ADMIN
   if(view==="admin")return(
     <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
-      {/* 회원정보 수정 모달 */}
-      {editTarget && (
-        <EditMemberModal
-          supp={editTarget}
-          existingSupps={supps}
-          onSave={handleEditSave}
-          onClose={()=>setEditTarget(null)}
-        />
-      )}
+      {editTarget&&<EditMemberModal supp={editTarget} existingSupps={supps} onSave={handleEditSave} onClose={()=>setEditTarget(null)}/>}
       <div style={{background:PC,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
         <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={btn("rgba(255,255,255,0.15)","#fff",true)}>로그아웃</button>
       </div>
-      <div style={{display:"flex",background:CARD,borderBottom:`1px solid ${BORDER}`,overflowX:"auto"}}>
+      <div style={{display:"flex",background:CARD,borderBottom:"1px solid "+BORDER,overflowX:"auto"}}>
         {[["supporters","써포터즈"],["notices","공지사항"],["products","제품관리"],["activities","활동조회"],["inquiries","문의관리"]].map(([id,tabName])=>(
           <button key={id} onClick={()=>{setAtab(id);if(id==="inquiries"){setSelInquiry(null);loadAllInquiries();}if(id==="activities")setViewSupp(null);if(id==="products")loadAdminProds();}}
-            style={{flex:1,minWidth:60,padding:"12px 6px",border:"none",background:"none",cursor:"pointer",fontWeight:700,fontSize:12,color:atab===id?PC:MUTED,borderBottom:`2px solid ${atab===id?PC:"transparent"}`,whiteSpace:"nowrap"}}>
+            style={{flex:1,minWidth:60,padding:"12px 6px",border:"none",background:"none",cursor:"pointer",fontWeight:700,fontSize:12,color:atab===id?PC:MUTED,borderBottom:"2px solid "+(atab===id?PC:"transparent"),whiteSpace:"nowrap"}}>
             {tabName}
           </button>
         ))}
@@ -1562,19 +959,17 @@ export default function App(){
           <div style={card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontWeight:700,fontSize:15}}>📊 회원 엑셀 일괄 등록</div><button onClick={downloadTemplate} style={btn(BRAND.primaryLight,PC,true)}>📥 양식</button></div>
             <div style={{fontSize:12,color:MUTED,marginBottom:10}}>기수·닉네임·전화번호 필수 / 주소 선택</div>
-            <label style={{display:"block",border:`1.5px dashed ${BORDER}`,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:MUTED,background:"#FAFAFA",marginBottom:8}}>
+            <label style={{display:"block",border:"1.5px dashed "+BORDER,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:MUTED,background:"#FAFAFA",marginBottom:8}}>
               📂 엑셀 파일 선택<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleExcelUpload(e.target.files[0])}/>
             </label>
             {excelErr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:8}}>{excelErr}</div>}
             {excelPreview.length>0&&(<>
-              <div style={{maxHeight:140,overflowY:"auto",border:`1px solid ${BORDER}`,borderRadius:8,marginBottom:10}}>
-                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:`1px solid ${BORDER}`,fontSize:13,display:"flex",gap:10}}><span style={{color:MUTED}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:MUTED}}>{p.phone}</span>{p.address&&<span style={{color:PC,fontSize:11}}>📦 주소있음</span>}</div>))}
+              <div style={{maxHeight:140,overflowY:"auto",border:"1px solid "+BORDER,borderRadius:8,marginBottom:10}}>
+                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:"1px solid "+BORDER,fontSize:13,display:"flex",gap:10}}><span style={{color:MUTED}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:MUTED}}>{p.phone}</span>{p.address&&<span style={{color:PC,fontSize:11}}>📦 주소있음</span>}</div>))}
               </div>
               <div style={{display:"flex",gap:8}}><button onClick={confirmExcelUpload} style={{...btn(PC),flex:1}}>✅ 등록 확정</button><button onClick={()=>setExcelPreview([])} style={{...btn("#EEE8E0",TEXT)}}>취소</button></div>
             </>)}
           </div>
-
-          {/* 일괄 등급 변경 패널 */}
           <div style={card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bulkMode?14:0}}>
               <div style={{fontWeight:700,fontSize:15}}>👥 일괄 등급 변경</div>
@@ -1587,7 +982,7 @@ export default function App(){
                 <span style={{fontSize:13,color:MUTED,fontWeight:600}}>변경할 등급:</span>
                 {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
                   <button key={g} onClick={()=>setBulkTargetGrade(g)}
-                    style={{padding:"6px 14px",borderRadius:8,border:`2px solid ${bulkTargetGrade===g?GC[g]:BORDER}`,background:bulkTargetGrade===g?GB[g]:CARD,color:bulkTargetGrade===g?GC[g]:MUTED,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+(bulkTargetGrade===g?GC[g]:BORDER),background:bulkTargetGrade===g?GB[g]:CARD,color:bulkTargetGrade===g?GC[g]:MUTED,fontWeight:700,fontSize:13,cursor:"pointer"}}>
                     {name}
                   </button>
                 ))}
@@ -1595,26 +990,23 @@ export default function App(){
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>기수별 전체선택</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                  <button onClick={toggleSelectAll}
-                    style={{padding:"5px 12px",borderRadius:6,border:`1.5px solid ${bulkSelected.size===supps.length?PC:BORDER}`,background:bulkSelected.size===supps.length?PC:CARD,color:bulkSelected.size===supps.length?"#fff":TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                  <button onClick={toggleSelectAll} style={{padding:"5px 12px",borderRadius:6,border:"1.5px solid "+(bulkSelected.size===supps.length?PC:BORDER),background:bulkSelected.size===supps.length?PC:CARD,color:bulkSelected.size===supps.length?"#fff":TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
                     {bulkSelected.size===supps.length?"전체 해제":"전체 선택"}
                   </button>
                   {[...new Set(supps.map(s=>s.gen))].sort().map(gen=>{
                     const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
                     const allSel=ids.length>0&&ids.every(id=>bulkSelected.has(id));
                     const someSel=ids.some(id=>bulkSelected.has(id));
-                    return(
-                      <button key={gen} onClick={()=>toggleSelectByGen(gen)}
-                        style={{padding:"5px 12px",borderRadius:6,border:`1.5px solid ${allSel?PC:someSel?"#90B8A8":BORDER}`,background:allSel?PC:someSel?BRAND.primaryLight:CARD,color:allSel?"#fff":someSel?PC:TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                        {gen} ({ids.length}명)
-                      </button>
-                    );
+                    return(<button key={gen} onClick={()=>toggleSelectByGen(gen)}
+                      style={{padding:"5px 12px",borderRadius:6,border:"1.5px solid "+(allSel?PC:someSel?"#90B8A8":BORDER),background:allSel?PC:someSel?BRAND.primaryLight:CARD,color:allSel?"#fff":someSel?PC:TEXT,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                      {gen} ({ids.length}명)
+                    </button>);
                   })}
                 </div>
               </div>
               <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{fontSize:13,color:PC,fontWeight:700,flex:1}}>
-                  {bulkSelected.size>0?`${bulkSelected.size}명 선택됨 → ${GN[bulkTargetGrade]}으로 변경`:"회원을 선택하세요"}
+                  {bulkSelected.size>0?bulkSelected.size+"명 선택됨 → "+GN[bulkTargetGrade]+"으로 변경":"회원을 선택하세요"}
                 </div>
                 <button onClick={applyBulkGrade} disabled={bulkSaving||bulkSelected.size===0}
                   style={{...btn(bulkSelected.size===0?"#CCC":GC[bulkTargetGrade]),padding:"9px 18px",opacity:bulkSaving?0.7:1,cursor:bulkSelected.size===0?"not-allowed":"pointer"}}>
@@ -1625,14 +1017,12 @@ export default function App(){
             </>)}
           </div>
 
-          {/* 써포터즈 목록 */}
+          {/* 써포터즈 목록 + 검색 */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
             {bulkMode&&bulkSelected.size>0&&<div style={{fontSize:12,color:PC,fontWeight:700}}>{bulkSelected.size}명 선택</div>}
           </div>
-          {/* ── 검색 바 */}
           <div style={{background:CARD,borderRadius:12,padding:"12px 14px",boxShadow:"0 2px 10px rgba(0,0,0,0.06)",marginBottom:14}}>
-            {/* 등급 필터 탭 */}
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:8,padding:3,marginBottom:10}}>
               {[["전체","전체"],["laroupi","라루피"],["laroupisecret","라루피시크릿"]].map(([val,label])=>(
                 <button key={val} onClick={()=>setSuppSearchGrade(val)}
@@ -1644,83 +1034,42 @@ export default function App(){
                 </button>
               ))}
             </div>
-            {/* 닉네임 검색 입력 */}
             <div style={{position:"relative"}}>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none"}}>🔍</span>
-              <input
-                style={{width:"100%",padding:"9px 36px 9px 36px",border:`1.5px solid ${suppSearch?PC:BORDER}`,borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#FAFAFA",fontFamily:"inherit",transition:"border-color 0.15s"}}
-                placeholder="기수 또는 닉네임으로 검색"
-                value={suppSearch}
-                onChange={e=>setSuppSearch(e.target.value)}
-              />
-              {suppSearch&&(
-                <button onClick={()=>setSuppSearch("")}
-                  style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:MUTED,lineHeight:1,padding:0}}>
-                  ×
-                </button>
-              )}
+              <input style={{width:"100%",padding:"9px 36px",border:"1.5px solid "+(suppSearch?PC:BORDER),borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#FAFAFA",fontFamily:"inherit"}}
+                placeholder="기수 또는 닉네임으로 검색" value={suppSearch} onChange={e=>setSuppSearch(e.target.value)}/>
+              {suppSearch&&<button onClick={()=>setSuppSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:MUTED,lineHeight:1,padding:0}}>×</button>}
             </div>
-            {/* 검색 결과 카운트 */}
-            {(()=>{
-              const filtered=supps.filter(s=>{
-                const gradeMatch=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
+            {(suppSearch||suppSearchGrade!=="전체")&&(()=>{
+              const cnt=supps.filter(s=>{
+                const gm=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
                 const q=suppSearch.trim().toLowerCase();
-                const textMatch=!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q));
-                return gradeMatch&&textMatch;
-              });
-              const total=filtered.length;
-              if(suppSearch||suppSearchGrade!=="전체") return(
-                <div style={{marginTop:8,fontSize:12,color:total>0?PC:MUTED,fontWeight:total>0?700:400}}>
-                  {total>0?`${total}명 검색됨`:"검색 결과가 없습니다."}
-                </div>
-              );
-              return null;
+                return gm&&(!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q)));
+              }).length;
+              return<div style={{marginTop:8,fontSize:12,color:cnt>0?PC:MUTED,fontWeight:cnt>0?700:400}}>{cnt>0?cnt+"명 검색됨":"검색 결과가 없습니다."}</div>;
             })()}
           </div>
-          {/* 수정 완료 메시지 */}
-          {editMsg&&(
-            <div style={{padding:"10px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:12,fontSize:13,color:"#2E7D32",fontWeight:600}}>
-              {editMsg}
-            </div>
-          )}
+          {editMsg&&<div style={{padding:"10px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:12,fontSize:13,color:"#2E7D32",fontWeight:600}}>{editMsg}</div>}
           {(()=>{
             const filteredSupps=supps.filter(s=>{
-              const gradeMatch=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
+              const gm=suppSearchGrade==="전체"||s.grade===suppSearchGrade;
               const q=suppSearch.trim().toLowerCase();
-              const textMatch=!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q));
-              return gradeMatch&&textMatch;
+              return gm&&(!q||(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q)));
             });
-            if(supps.length===0) return <div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>;
-            if(filteredSupps.length===0) return <div style={{...card,textAlign:"center",color:MUTED,padding:32}}>검색 결과가 없습니다.</div>;
+            if(supps.length===0)return<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 써포터즈가 없습니다.</div>;
+            if(filteredSupps.length===0)return<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>검색 결과가 없습니다.</div>;
             return filteredSupps.map(s=>{
               const isChecked=bulkSelected.has(s.id);
               return(<div key={s.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const next=new Set(prev);isChecked?next.delete(s.id):next.add(s.id);return next;});}}}
-                style={{...card,display:"flex",alignItems:"center",gap:8,padding:"12px 16px",cursor:bulkMode?"pointer":"default",border:isChecked?`2px solid ${PC}`:"2px solid transparent",background:isChecked?BRAND.primaryLight:CARD,transition:"all 0.1s"}}>
-                {bulkMode&&(
-                  <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?PC:BORDER}`,background:isChecked?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    {isChecked&&<span style={{color:"#fff",fontSize:12,lineHeight:1}}>✓</span>}
-                  </div>
-                )}
+                style={{...card,display:"flex",alignItems:"center",gap:8,padding:"12px 16px",cursor:bulkMode?"pointer":"default",border:isChecked?"2px solid "+PC:"2px solid transparent",background:isChecked?BRAND.primaryLight:CARD,transition:"all 0.1s"}}>
+                {bulkMode&&<div style={{width:20,height:20,borderRadius:5,border:"2px solid "+(isChecked?PC:BORDER),background:isChecked?PC:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isChecked&&<span style={{color:"#fff",fontSize:12,lineHeight:1}}>✓</span>}</div>}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
                   <div style={{fontSize:11,color:MUTED}}>끝자리: {s.phone} · {s.joinDate}</div>
                 </div>
-                {!bulkMode&&(
-                  <select value={s.grade} onChange={e=>changeGrade(s.id,e.target.value)} style={{border:`1.5px solid ${BORDER}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,color:GC[s.grade],background:GB[s.grade],cursor:"pointer",outline:"none"}}>
-                    <option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option>
-                  </select>
-                )}
+                {!bulkMode&&<select value={s.grade} onChange={e=>changeGrade(s.id,e.target.value)} style={{border:"1.5px solid "+BORDER,borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,color:GC[s.grade],background:GB[s.grade],cursor:"pointer",outline:"none"}}><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>}
                 {bulkMode&&<span style={tag(s.grade)}>{GN[s.grade]}</span>}
-                {/* ── 수정 버튼 추가 */}
-                {!bulkMode&&(
-                  <button
-                    onClick={e=>{e.stopPropagation();setEditTarget(s);}}
-                    style={btn(BRAND.primaryLight,PC,true)}
-                    title="회원정보 수정"
-                  >
-                    ✏️ 수정
-                  </button>
-                )}
+                {!bulkMode&&<button onClick={e=>{e.stopPropagation();setEditTarget(s);}} style={btn(BRAND.primaryLight,PC,true)}>✏️ 수정</button>}
                 {!bulkMode&&<button onClick={()=>openSuppActs(s)} style={btn("#EEE8E0",TEXT,true)}>조회</button>}
                 {!bulkMode&&<button onClick={()=>delSupporter(s.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button>}
               </div>);
@@ -1749,7 +1098,7 @@ export default function App(){
         {atab==="products"&&(<>
           <div style={card}>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
-              {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(<button key={g} onClick={()=>{setProdGrade(g);}} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:prodGrade===g?CARD:"transparent",color:prodGrade===g?GC[g]:MUTED,boxShadow:prodGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>))}
+              {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(<button key={g} onClick={()=>setProdGrade(g)} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:prodGrade===g?CARD:"transparent",color:prodGrade===g?GC[g]:MUTED,boxShadow:prodGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>))}
             </div>
             {prodGrade===G.L&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>🔓 차수 오픈 관리</div>
@@ -1779,7 +1128,7 @@ export default function App(){
               <>
                 <label style={lbl}>차수 선택</label>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-                  {LACHAS.map(cha=>(<button key={cha} onClick={()=>setProdCha(cha)} style={{padding:"8px 16px",borderRadius:8,border:`2px solid ${prodCha===cha?PC:BORDER}`,background:prodCha===cha?PC:CARD,color:prodCha===cha?"#fff":TEXT,fontWeight:700,cursor:"pointer",fontSize:13}}>{cha}차</button>))}
+                  {LACHAS.map(cha=>(<button key={cha} onClick={()=>setProdCha(cha)} style={{padding:"8px 16px",borderRadius:8,border:"2px solid "+(prodCha===cha?PC:BORDER),background:prodCha===cha?PC:CARD,color:prodCha===cha?"#fff":TEXT,fontWeight:700,cursor:"pointer",fontSize:13}}>{cha}차</button>))}
                 </div>
                 <div style={{fontSize:12,color:MUTED,marginBottom:14}}>라루피 {prodCha}차 제품</div>
               </>
@@ -1794,13 +1143,13 @@ export default function App(){
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <button onClick={addProduct} style={{...btn(PC),flex:2}}>➕ 제품 추가</button>
               <button onClick={loadPrevMonthProds} disabled={loadingPrevProd} style={{...btn(BRAND.primaryLight,PC),flex:1,fontSize:12,opacity:loadingPrevProd?0.7:1}}>
-                {loadingPrevProd?"불러오는 중...":prodGrade===G.L?`${prodCha-1>0?prodCha-1+"차":"이전"} 불러오기`:"지난달 불러오기"}
+                {loadingPrevProd?"불러오는 중...":prodGrade===G.L?(prodCha-1>0?prodCha-1+"차":"이전")+" 불러오기":"지난달 불러오기"}
               </button>
             </div>
             {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
           </div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
-            {prodGrade===G.L?`라루피 ${prodCha}차`:`라루피시크릿 ${prodYear}년 ${prodMonth}월`} 제품 ({prodList.length}개)
+            {prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 제품 ({prodList.length}개)
           </div>
           {prodList.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:24,fontSize:13}}>등록된 제품이 없습니다.</div>
             :prodList.map(p=>(<div key={p.id} style={{...card,display:"flex",alignItems:"center",gap:10,padding:"12px 16px"}}><div style={{flex:1}}><div style={{fontWeight:700}}>{p.name}</div><div style={{fontSize:12,color:MUTED}}>코드: {p.code}</div></div><button onClick={()=>delProduct(p.id)} style={btn("#FDECEA","#C0392B",true)}>삭제</button></div>))}
@@ -1816,7 +1165,6 @@ export default function App(){
               <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={sel}><option value="전체">전체 등급</option><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
             </div>
-            {/* 엑셀 다운로드 - 선택한 연도/월/등급 기준 표시 */}
             <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:PC,fontWeight:700}}>
               📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGrade==="전체"?"전체 등급":GN[actGrade]}
             </div>
@@ -1833,7 +1181,7 @@ export default function App(){
                   <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
                       <span style={tag(s.grade)}>{GN[s.grade]}</span>
-                      {has?<span style={{fontSize:11,color:PC,fontWeight:700}}>총 {d.total}건{d.blogs>0?` · 블로그 ${d.blogs}`:""}{d.virals>0?` · 바이럴 ${d.virals}`:""}{d.extras>0?` · 기타 ${d.extras}`:""}</span>:<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
+                      {has?<span style={{fontSize:11,color:PC,fontWeight:700}}>총 {d.total}건{d.blogs>0?" · 블로그 "+d.blogs:""}{d.virals>0?" · 바이럴 "+d.virals:""}{d.extras>0?" · 기타 "+d.extras:""}</span>:<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
                       {d?.submitted&&<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}
                     </div>
                   </div>
@@ -1845,11 +1193,11 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><button onClick={()=>setViewSupp(null)} style={btn("#EEE8E0",TEXT,true)}>← 목록</button><div><div style={{fontWeight:800}}>{viewSupp.gen} · {viewSupp.nick}</div><span style={tag(viewSupp.grade)}>{GN[viewSupp.grade]}</span></div></div>
             {loadingVA?<div style={{textAlign:"center",padding:40,color:MUTED}}>불러오는 중...</div>
               :viewActs.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>등록된 활동 내역이 없습니다.</div>
-              :viewActs.map(a=>(<div key={`${a.year}-${a.month}`} style={card}>
+              :viewActs.map(a=>(<div key={a.year+"-"+a.month} style={card}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontWeight:800,fontSize:15,color:PC}}>{a.year}년 {a.month}월</div>{a.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}</div>
                 {a.blogs&&a.blogs.some(b=>b.link)&&(<div style={{marginBottom:14}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📝 블로그 ({a.blogs.filter(b=>b.link).length}건)</div>{a.blogs.map((b,i)=>b.link&&<div key={i} style={{fontSize:13,marginBottom:6}}>{i+1}. <a href={b.link} target="_blank" rel="noreferrer" style={{color:PC,wordBreak:"break-all"}}>{b.link}</a></div>)}</div>)}
-                {a.virals&&a.virals.some(v=>v.link||v.photo)&&(<div style={{marginBottom:14}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📣 바이럴 ({a.virals.filter(v=>v.link||v.photo).length}건)</div>{a.virals.map((v,i)=>(v.link||v.photo)&&(<div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:`1px solid ${BORDER}`}}><div style={{fontSize:12,color:MUTED,marginBottom:4}}>바이럴 {i+1}</div>{v.link&&<div style={{fontSize:13,marginBottom:6}}><a href={v.link} target="_blank" rel="noreferrer" style={{color:PC,wordBreak:"break-all"}}>{v.link}</a></div>}{v.photo&&<img src={v.photo} alt="" style={{maxWidth:160,maxHeight:120,borderRadius:8,border:`1px solid ${BORDER}`,objectFit:"cover"}}/>}</div>))}</div>)}
-                {a.extras&&a.extras.some(e=>e.link||e.photo)&&(<div><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📌 기타 ({a.extras.filter(e=>e.link||e.photo).length}건)</div>{a.extras.map((e,i)=>(e.link||e.photo)&&(<div key={i} style={{marginBottom:10}}>{e.link&&<div style={{fontSize:13,marginBottom:4}}><a href={e.link} target="_blank" rel="noreferrer" style={{color:PC,wordBreak:"break-all"}}>{e.link}</a></div>}{e.photo&&<img src={e.photo} alt="" style={{maxWidth:160,maxHeight:120,borderRadius:8,border:`1px solid ${BORDER}`,objectFit:"cover"}}/>}</div>))}</div>)}
+                {a.virals&&a.virals.some(v=>v.link||v.photo)&&(<div style={{marginBottom:14}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📣 바이럴 ({a.virals.filter(v=>v.link||v.photo).length}건)</div>{a.virals.map((v,i)=>(v.link||v.photo)&&(<div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid "+BORDER}}><div style={{fontSize:12,color:MUTED,marginBottom:4}}>바이럴 {i+1}</div>{v.link&&<div style={{fontSize:13,marginBottom:6}}><a href={v.link} target="_blank" rel="noreferrer" style={{color:PC,wordBreak:"break-all"}}>{v.link}</a></div>}{v.photo&&<img src={v.photo} alt="" style={{maxWidth:160,maxHeight:120,borderRadius:8,border:"1px solid "+BORDER,objectFit:"cover"}}/>}</div>))}</div>)}
+                {a.extras&&a.extras.some(e=>e.link||e.photo)&&(<div><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📌 기타 ({a.extras.filter(e=>e.link||e.photo).length}건)</div>{a.extras.map((e,i)=>(e.link||e.photo)&&(<div key={i} style={{marginBottom:10}}>{e.link&&<div style={{fontSize:13,marginBottom:4}}><a href={e.link} target="_blank" rel="noreferrer" style={{color:PC,wordBreak:"break-all"}}>{e.link}</a></div>}{e.photo&&<img src={e.photo} alt="" style={{maxWidth:160,maxHeight:120,borderRadius:8,border:"1px solid "+BORDER,objectFit:"cover"}}/>}</div>))}</div>)}
               </div>))}
           </>)}
         </>)}
@@ -1859,7 +1207,7 @@ export default function App(){
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>💬 전체 문의 ({allInquiries.length}건)<button onClick={loadAllInquiries} style={{...btn("#EEE8E0",TEXT,true),marginLeft:10}}>새로고침</button></div>
             {loadingIq?<div style={{textAlign:"center",padding:40,color:MUTED}}>불러오는 중...</div>
               :allInquiries.length===0?<div style={{...card,textAlign:"center",color:MUTED,padding:32}}>문의 내역이 없습니다.</div>
-              :allInquiries.map(iq=>(<div key={iq.id} onClick={()=>{setSelInquiry(iq);setReplyText(iq.reply||"");}} style={{...card,cursor:"pointer",borderLeft:`3px solid ${iq.reply?PC:"#E0B97A"}`,padding:"12px 16px"}}>
+              :allInquiries.map(iq=>(<div key={iq.id} onClick={()=>{setSelInquiry(iq);setReplyText(iq.reply||"");}} style={{...card,cursor:"pointer",borderLeft:"3px solid "+(iq.reply?PC:"#E0B97A"),padding:"12px 16px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{iq.title}</div><div style={{fontSize:12,color:MUTED}}>{iq.suppName}&nbsp;<span style={tag(iq.grade)}>{GN[iq.grade]}</span></div><div style={{fontSize:11,color:MUTED,marginTop:4}}>{iq.date}</div></div><span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:iq.reply?BRAND.primaryLight:"#FEF6E4",color:iq.reply?PC:"#B7860B",whiteSpace:"nowrap"}}>{iq.reply?"답변완료":"미답변"}</span></div>
               </div>))}
           </>):(<>
@@ -1877,18 +1225,18 @@ export default function App(){
 function OpenChaList({refreshKey}){
   const[list,setList]=useState([]);
   const PC=BRAND.primary,MUTED="#888";
-  useEffect(()=>{db.get(`openCha:laroupi`).then(d=>setList(d||[]));},[ refreshKey]);
+  useEffect(()=>{db.get("openCha:laroupi").then(d=>setList(d||[]));},[ refreshKey]);
   if(list.length===0)return<div style={{fontSize:12,color:MUTED,marginBottom:10}}>현재 오픈된 차수: 없음</div>;
-  return<div style={{fontSize:12,color:PC,fontWeight:700,marginBottom:10}}>현재 오픈된 차수: {list.map(c=>`${c}차`).join(", ")}</div>;
+  return<div style={{fontSize:12,color:PC,fontWeight:700,marginBottom:10}}>현재 오픈된 차수: {list.map(c=>c+"차").join(", ")}</div>;
 }
 
 function OpenChaToggle({cha,refreshKey,onToggle}){
   const[isOpen,setIsOpen]=useState(false);
   const PC=BRAND.primary;
-  useEffect(()=>{db.get(`openCha:laroupi`).then(d=>setIsOpen((d||[]).includes(cha)));},[ cha,refreshKey]);
+  useEffect(()=>{db.get("openCha:laroupi").then(d=>setIsOpen((d||[]).includes(cha)));},[ cha,refreshKey]);
   return(
-    <button onClick={async()=>{await onToggle();const d=await db.get(`openCha:laroupi`)||[];setIsOpen(d.includes(cha));}}
-      style={{padding:"10px 18px",borderRadius:10,border:`2px solid ${isOpen?"#C0392B":PC}`,background:isOpen?"#FDECEA":BRAND.primaryLight,color:isOpen?"#C0392B":PC,fontWeight:700,cursor:"pointer",fontSize:14,minWidth:60}}>
+    <button onClick={async()=>{await onToggle();const d=await db.get("openCha:laroupi")||[];setIsOpen(d.includes(cha));}}
+      style={{padding:"10px 18px",borderRadius:10,border:"2px solid "+(isOpen?"#C0392B":PC),background:isOpen?"#FDECEA":BRAND.primaryLight,color:isOpen?"#C0392B":PC,fontWeight:700,cursor:"pointer",fontSize:14,minWidth:60}}>
       {cha}차 {isOpen?"🟢 오픈":"⚫ 클로즈"}
     </button>
   );

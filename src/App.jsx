@@ -616,74 +616,632 @@ export default function App(){
     await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
   };
 
+// ── 회원정보 수정 모달
+function EditMemberModal({supp, onSave, onClose, existingSupps}){
+  const PC=BRAND.primary, BORDER="#E8E0D5", MUTED="#888", TEXT="#2C2C2C";
+  const [ef, setEf] = useState({gen: supp.gen, nick: supp.nick, phone: supp.phone});
+  const [emsg, setEmsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
+  const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
+  const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
+
+  const doSave = async () => {
+    const {gen, nick, phone} = ef;
+    if(!gen.trim() || !nick.trim() || !phone.trim()){setEmsg("모든 항목을 입력해 주세요."); return;}
+    if(phone.trim().length !== 4 || isNaN(phone.trim())){setEmsg("전화번호 끝 4자리를 숫자로 입력해 주세요."); return;}
+    // 중복 체크 (자기 자신 제외)
+    const duplicate = existingSupps.find(s =>
+      s.id !== supp.id &&
+      s.gen === gen.trim() &&
+      s.nick === nick.trim()
+    );
+    if(duplicate){setEmsg("동일 기수/닉네임이 이미 존재합니다."); return;}
+    setSaving(true);
+    await onSave(supp.id, {gen: gen.trim(), nick: nick.trim(), phone: phone.trim()});
+    setSaving(false);
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:18,padding:28,maxWidth:360,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:17}}>✏️ 회원정보 수정</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:MUTED,lineHeight:1}}>×</button>
+        </div>
+        {/* 현재 정보 요약 */}
+        <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:13,color:PC,fontWeight:600}}>
+          현재: {supp.gen} · {supp.nick} · 끝자리 {supp.phone}
+        </div>
+        <label style={lbl}>기수 *</label>
+        <input style={inp} placeholder="예: 1기" value={ef.gen} onChange={e=>setEf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        <label style={lbl}>닉네임 *</label>
+        <input style={inp} placeholder="닉네임" value={ef.nick} onChange={e=>setEf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        <label style={lbl}>전화번호 끝 4자리 *</label>
+        <input style={inp} placeholder="예: 5678" maxLength={4} value={ef.phone} onChange={e=>setEf(f=>({...f,phone:e.target.value.replace(/\D/g,"")}))} onKeyDown={e=>e.key==="Enter"&&doSave()}/>
+        {emsg && <div style={{color:"#C0392B",fontSize:13,marginBottom:10,fontWeight:600}}>{emsg}</div>}
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <button onClick={onClose} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
+          <button onClick={doSave} disabled={saving} style={{...btn(PC),flex:2,opacity:saving?0.7:1,boxShadow:"0 4px 16px rgba(0,70,56,0.2)"}}>
+            {saving?"저장 중...":"✅ 저장"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function App(){
+  useEffect(()=>{
+    const s=document.createElement("script");s.src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";document.head.appendChild(s);
+  },[]);
+  useEffect(()=>{
+    window.history.pushState(null,"",window.location.href);
+    const h=()=>window.history.pushState(null,"",window.location.href);
+    window.addEventListener("popstate",h);return()=>window.removeEventListener("popstate",h);
+  },[]);
+  useEffect(()=>{
+    const saved=sessionStorage.getItem("laluppy_user");
+    const savedView=sessionStorage.getItem("laluppy_view");
+    if(saved&&savedView){setMe(JSON.parse(saved));setView(savedView);}
+    const savedId=localStorage.getItem("laluppy_savedId");
+    if(savedId){
+      try{
+        const {gen,nick,phone}=JSON.parse(savedId);
+        setLf(f=>({...f,gen:gen||"",nick:nick||"",phone:phone||""}));
+        setSaveId(true);
+      }catch{}
+    }
+  },[]);
+
+  const[view,setView]=useState("login");
+  const[adminMode,setAdminMode]=useState(false);
+  const[lf,setLf]=useState({gen:"",nick:"",phone:"",code:""});
+  const[saveId,setSaveId]=useState(false);
+  const[lerr,setLerr]=useState("");
+  const[me,setMe]=useState(null);
+  const[sp,setSp]=useState("notices");
+  const[myNotices,setMyNotices]=useState([]);
+  const[savedMonths,setSavedMonths]=useState([]);
+  const[openMonthsList,setOpenMonthsList]=useState([]);
+  const[openChaList,setOpenChaList]=useState([]);
+  const[yr,setYr]=useState(new Date().getFullYear());
+  const[mo,setMo]=useState(new Date().getMonth()+1);
+  const[selectedActCha,setSelectedActCha]=useState(1);
+  const[savedChas,setSavedChas]=useState([]);
+  const[act,setAct]=useState(null);
+  const[savMsg,setSavMsg]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[myInquiries,setMyInquiries]=useState([]);
+  const[iqf,setIqf]=useState({title:"",content:""});
+  const[iqMsg,setIqMsg]=useState("");
+  const[iqSending,setIqSending]=useState(false);
+  const[myAddress,setMyAddress]=useState({name:"",phone:"",zonecode:"",address:"",addressDetail:""});
+  const[addrMsg,setAddrMsg]=useState("");
+  const[addrSaving,setAddrSaving]=useState(false);
+  const[addrEditMode,setAddrEditMode]=useState(false);
+  const[selectedCha,setSelectedCha]=useState(1);
+  const[selYr,setSelYr]=useState(new Date().getFullYear());
+  const[selMo,setSelMo]=useState(new Date().getMonth()+1);
+  const[availableProds,setAvailableProds]=useState([]);
+  const[mySelection,setMySelection]=useState(null);
+  const[selMsg,setSelMsg]=useState("");
+  const[canSelectProduct,setCanSelectProduct]=useState(false);
+  const[canSelectReason,setCanSelectReason]=useState("");
+  const[selConfirmProd,setSelConfirmProd]=useState(null);
+  const[atab,setAtab]=useState("supporters");
+  const[supps,setSupps]=useState([]);
+  const[nlp,setNlp]=useState([]);
+  const[nsc,setNsc]=useState([]);
+  const[nGrade,setNGrade]=useState(G.L);
+  const[nf,setNf]=useState({title:"",content:""});
+  const[nmsg,setNmsg]=useState("");
+  const[af,setAf]=useState({gen:"",nick:"",phone:""});
+  const[amsg,setAmsg]=useState("");
+  const[bulkMode,setBulkMode]=useState(false);
+  const[bulkSelected,setBulkSelected]=useState(new Set());
+  const[bulkTargetGrade,setBulkTargetGrade]=useState(G.S);
+  const[bulkMsg,setBulkMsg]=useState("");
+  const[bulkSaving,setBulkSaving]=useState(false);
+  const[viewSupp,setViewSupp]=useState(null);
+  const[viewActs,setViewActs]=useState([]);
+  const[loadingVA,setLoadingVA]=useState(false);
+  const[actYear,setActYear]=useState(new Date().getFullYear());
+  const[actMonth,setActMonth]=useState(new Date().getMonth()+1);
+  const[actGen,setActGen]=useState("전체");
+  const[actGrade,setActGrade]=useState("전체");
+  const[actSummary,setActSummary]=useState({});
+  const[loadingSum,setLoadingSum]=useState(false);
+  const[allInquiries,setAllInquiries]=useState([]);
+  const[selInquiry,setSelInquiry]=useState(null);
+  const[replyText,setReplyText]=useState("");
+  const[replyMsg,setReplyMsg]=useState("");
+  const[loadingIq,setLoadingIq]=useState(false);
+  const[prodGrade,setProdGrade]=useState(G.L);
+  const[prodYear,setProdYear]=useState(new Date().getFullYear());
+  const[prodMonth,setProdMonth]=useState(new Date().getMonth()+1);
+  const[prodCha,setProdCha]=useState(1);
+  const[prodList,setProdList]=useState([]);
+  const[newProd,setNewProd]=useState({name:"",code:""});
+  const[prodMsg,setProdMsg]=useState("");
+  const[newOpenMonth,setNewOpenMonth]=useState({year:new Date().getFullYear(),month:new Date().getMonth()+2>12?1:new Date().getMonth()+2});
+  const[openRefresh,setOpenRefresh]=useState(0);
+  const[excelPreview,setExcelPreview]=useState([]);
+  const[excelErr,setExcelErr]=useState("");
+  const[downloadingAct,setDownloadingAct]=useState(false);
+  const[downloadingSel,setDownloadingSel]=useState(false);
+  const[loadingPrevProd,setLoadingPrevProd]=useState(false);
+  // ── 회원정보 수정 모달 상태
+  const[editTarget,setEditTarget]=useState(null); // 수정 대상 써포터즈 객체
+  const[editMsg,setEditMsg]=useState("");
+  // ── 써포터즈 검색
+  const[suppSearch,setSuppSearch]=useState("");
+  const[suppSearchGrade,setSuppSearchGrade]=useState("전체"); // "전체" | "laroupi" | "laroupisecret"
+
+  useEffect(()=>{
+    if(view==="admin"){
+      db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
+      Promise.all([db.get("notices:laroupi"),db.get("notices:laroupisecret")]).then(([lp,sc])=>{setNlp(lp||[]);setNsc(sc||[]);});
+    }
+  },[view]);
+
+  useEffect(()=>{
+    if(me){
+      Promise.all([
+        db.get(`notices:${me.grade}`),
+        db.get(`address:${me.id}`),
+        me.grade===G.L ? db.get(`openCha:laroupi`) : db.get(`openMonths:${me.grade}`)
+      ]).then(([notices,addr,openData])=>{
+        setMyNotices(notices||[]);
+        if(addr) setMyAddress(addr);
+        if(me.grade===G.L) setOpenChaList(openData||[]);
+        else setOpenMonthsList(openData||[]);
+      });
+      loadMySaved(me.id);
+      loadMyInquiries(me.id);
+    }
+  },[me]);
+
+  useEffect(()=>{
+    if(me&&sp==="product"){
+      Promise.all([loadAvailableProds(),loadMySelection(),loadCanSelect()]);
+    }
+  },[me,sp,selectedCha,selYr,selMo]);
+
+  useEffect(()=>{
+    if(atab==="products"&&view==="admin")loadAdminProds();
+  },[atab,prodGrade,prodYear,prodMonth,prodCha]);
+
+  const loadMySaved=async uid=>{
+    if(me?.grade===G.L){
+      const keys=await db.list(`activity:${uid}:cha:`);
+      setSavedChas(keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n)));
+    } else {
+      const keys=await db.list(`activity:${uid}:`);
+      setSavedMonths(keys.map(k=>{const p=k.split(":");return{year:+p[2],month:+p[3]};}).sort((a,b)=>b.year-a.year||b.month-a.month));
+    }
+  };
+
+  const selectCha=async cha=>{
+    if(!openChaList.includes(cha))return;
+    setSelectedActCha(cha);
+    const saved=await db.get(`activity:${me.id}:cha:${cha}`);
+    setAct(saved||blankAct(me.grade));setSp("activity");
+  };
+  const loadMyInquiries=async uid=>setMyInquiries(await db.get(`inquiries:${uid}`)||[]);
+
+  const loadAvailableProds=async()=>{
+    if(!me)return;
+    if(me.grade===G.L) setAvailableProds(await db.get(`products:laroupi:cha:${selectedCha}`)||[]);
+    else setAvailableProds(await db.get(`products:${me.grade}:${selYr}:${selMo}`)||[]);
+  };
+
+  const loadMySelection=async()=>{
+    if(!me)return;
+    if(me.grade===G.L) setMySelection(await db.get(`selection:${me.id}:cha:${selectedCha}`)||null);
+    else setMySelection(await db.get(`selection:${me.id}:${selYr}:${selMo}`)||null);
+  };
+
+  useEffect(()=>{
+    if(me&&me.grade===G.S&&sp==="product") setMySelection(null);
+  },[selYr,selMo]);
+
+  useEffect(()=>{
+    if(me&&me.grade===G.L&&sp==="product") setMySelection(null);
+  },[selectedCha]);
+
+  const loadAdminProds=async()=>{
+    if(prodGrade===G.L) setProdList(await db.get(`products:laroupi:cha:${prodCha}`)||[]);
+    else setProdList(await db.get(`products:${prodGrade}:${prodYear}:${prodMonth}`)||[]);
+  };
+
+  const loadCanSelect=async()=>{
+    if(!me)return;
+    if(me.grade===G.L){
+      const keys=await db.list(`selection:${me.id}:cha:`);
+      if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
+      const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
+      const lastCha=Math.max(...chaNums);
+      const[lastSel,actKeys]=await Promise.all([
+        db.get(`selection:${me.id}:cha:${lastCha}`),
+        db.list(`activity:${me.id}:`)
+      ]);
+      if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
+      const{selYear,selMonth}=lastSel;
+      const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
+      const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
+      const hasSubmitted=acts.some(a=>a?.submitted);
+      if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
+      else{setCanSelectProduct(false);setCanSelectReason(`${lastCha}차 신청 후 활동을 먼저 제출해 주세요.`);}
+    } else {
+      const keys=await db.list(`selection:${me.id}:`);
+      const filtered=keys.filter(k=>!k.includes(":cha:"));
+      if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
+      const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
+      sels.sort((a,b)=>b.year-a.year||b.month-a.month);
+      const last=sels[0];
+      const lastAct=await db.get(`activity:${me.id}:${last.year}:${last.month}`);
+      if(lastAct?.submitted){setCanSelectProduct(true);setCanSelectReason("");}
+      else{setCanSelectProduct(false);setCanSelectReason(`${last.year}년 ${last.month}월 활동을 먼저 제출해 주세요.`);}
+    }
+  };
+
+  const isMonthAccessible=(year,month)=>{
+    const now=new Date();const curY=now.getFullYear();const curM=now.getMonth()+1;
+    if(year<curY||(year===curY&&month<=curM))return true;
+    return openMonthsList.some(om=>om.year===year&&om.month===month);
+  };
+
+  const loadActSummary=async(year,suppList)=>{
+    const list=suppList!==undefined?suppList:supps;
+    if(!list.length)return;
+    setLoadingSum(true);
+    const entries=await Promise.all(list.map(async s=>{
+      const keys=await db.list(`activity:${s.id}:${year}:`);
+      const acts=await Promise.all(keys.map(k=>db.get(k)));
+      const monthData={};
+      acts.forEach((d,i)=>{
+        if(d){
+          const month=+keys[i].split(":")[3];
+          const bc=(d.blogs||[]).filter(b=>b.link).length;
+          const vc=(d.virals||[]).filter(v=>v.link||v.photo).length;
+          const ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
+          monthData[month]={blogs:bc,virals:vc,extras:ec,total:bc+vc+ec,submitted:d.submitted||false};
+        }
+      });
+      return[s.id,monthData];
+    }));
+    setActSummary(Object.fromEntries(entries));
+    setLoadingSum(false);
+  };
+
+  const doLogin=async()=>{
+    if(adminMode){
+      if(lf.code===ADMIN_CODE){setView("admin");setLerr("");sessionStorage.setItem("laluppy_view","admin");}
+      else setLerr("관리자 코드가 올바르지 않습니다.");
+      return;
+    }
+    if(!lf.gen||!lf.nick||!lf.phone){setLerr("모든 항목을 입력해 주세요.");return;}
+    const list=await db.get("supporters")||[];
+    const found=list.find(s=>s.gen===lf.gen.trim()&&s.nick===lf.nick.trim()&&s.phone===lf.phone.trim());
+    if(found){
+      if(saveId) localStorage.setItem("laluppy_savedId",JSON.stringify({gen:lf.gen.trim(),nick:lf.nick.trim(),phone:lf.phone.trim()}));
+      else localStorage.removeItem("laluppy_savedId");
+      setMe(found);setView("supporter");setLerr("");setSp("notices");
+      sessionStorage.setItem("laluppy_user",JSON.stringify(found));
+      sessionStorage.setItem("laluppy_view","supporter");
+    }
+    else setLerr("일치하는 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
+  };
+
+  const selectMonth=async(year,month)=>{
+    if(!isMonthAccessible(year,month))return;
+    setYr(year);setMo(month);
+    const saved=await db.get(`activity:${me.id}:${year}:${month}`);
+    setAct(saved||blankAct(me.grade));setSp("activity");
+  };
+
+  const doSave=async(submit=false)=>{
+    const missingIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
+    if(missingIdx!==-1){setSavMsg(`⚠️ 바이럴 ${missingIdx+1}번 사진이 없습니다.`);setTimeout(()=>setSavMsg(""),3000);return;}
+    setSaving(true);
+    const data={...act,year:yr,month:mo,submitted:submit?true:(act.submitted||false)};
+    const ok=await db.set(`activity:${me.id}:${yr}:${mo}`,data);
+    if(ok){setAct(data);loadMySaved(me.id);}
+    setSavMsg(ok?(submit?"✅ 최종 제출 완료!":"저장 완료! ✓"):"저장에 실패했습니다.");
+    setTimeout(()=>setSavMsg(""),3000);setSaving(false);
+  };
+
+  const saveAddress=async()=>{
+    if(!myAddress.name){setAddrMsg("수령인 이름을 입력해 주세요.");return;}
+    if(!myAddress.phone){setAddrMsg("연락처를 입력해 주세요.");return;}
+    if(!myAddress.address){setAddrMsg("주소를 검색해 주세요.");return;}
+    setAddrSaving(true);
+    const ok=await db.set(`address:${me.id}`,myAddress);
+    setAddrMsg(ok?"저장되었습니다! ✓":"저장에 실패했습니다.");
+    setTimeout(()=>setAddrMsg(""),2500);setAddrSaving(false);
+  };
+
+  const openPostcode=()=>{
+    if(!window.daum){alert("주소 검색 서비스를 불러오는 중입니다.");return;}
+    new window.daum.Postcode({oncomplete:data=>setMyAddress(a=>({...a,zonecode:data.zonecode,address:data.address}))}).open();
+  };
+
+  const handleSelectProduct=prod=>{
+    if(!canSelectProduct)return;
+    setSelConfirmProd(prod);
+  };
+
+  const confirmProductSelection=async()=>{
+    const prod=selConfirmProd;
+    if(!prod)return;
+    const now=new Date();
+    const sel=me.grade===G.L
+      ?{productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,selYear:now.getFullYear(),selMonth:now.getMonth()+1}
+      :{productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
+    const key=me.grade===G.L?`selection:${me.id}:cha:${selectedCha}`:`selection:${me.id}:${selYr}:${selMo}`;
+    const ok=await db.set(key,sel);
+    setSelConfirmProd(null);
+    if(ok){setMySelection(sel);setSelMsg("제품이 최종 신청되었습니다! ✓");}
+    else setSelMsg("저장에 실패했습니다.");
+    setTimeout(()=>setSelMsg(""),2500);
+  };
+
+  const addProduct=async()=>{
+    if(!newProd.name||!newProd.code){setProdMsg("제품명과 코드를 입력해 주세요.");return;}
+    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
+    const list=[...prodList,{id:`p${Date.now()}`,name:newProd.name,code:newProd.code}];
+    const ok=await db.set(key,list);
+    if(ok){setProdList(list);setNewProd({name:"",code:""});setProdMsg("제품 등록 완료! ✓");}
+    setTimeout(()=>setProdMsg(""),2000);
+  };
+  const delProduct=async id=>{
+    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
+    const list=prodList.filter(p=>p.id!==id);await db.set(key,list);setProdList(list);
+  };
+
+  const loadPrevMonthProds=async()=>{
+    setLoadingPrevProd(true);
+    let prevYear=prodYear,prevMonth=prodMonth-1;
+    if(prevMonth<1){prevMonth=12;prevYear=prodYear-1;}
+    const key=prodGrade===G.L?`products:laroupi:cha:${prodCha-1}`:`products:${prodGrade}:${prevYear}:${prevMonth}`;
+    const prev=await db.get(key)||[];
+    if(prev.length===0){setProdMsg("지난 기간 등록된 제품이 없습니다.");setTimeout(()=>setProdMsg(""),2500);setLoadingPrevProd(false);return;}
+    const currentList=[...prodList];
+    let added=0;
+    for(const p of prev){
+      if(!currentList.find(c=>c.code===p.code)){
+        currentList.push({...p,id:`p${Date.now()}_${Math.random().toString(36).slice(2,5)}`});
+        added++;
+      }
+    }
+    const saveKey=prodGrade===G.L?`products:laroupi:cha:${prodCha}`:`products:${prodGrade}:${prodYear}:${prodMonth}`;
+    await db.set(saveKey,currentList);
+    setProdList(currentList);
+    setProdMsg(`${added}개 불러오기 완료! (중복 ${prev.length-added}개 제외)`);
+    setTimeout(()=>setProdMsg(""),3000);
+    setLoadingPrevProd(false);
+  };
+
+  const toggleOpenCha=async cha=>{
+    const list=await db.get(`openCha:laroupi`)||[];
+    const isOpen=list.includes(cha);
+    const next=isOpen?list.filter(c=>c!==cha):[...list,cha].sort((a,b)=>a-b);
+    await db.set(`openCha:laroupi`,next);
+    setOpenRefresh(r=>r+1);
+    setProdMsg(`${cha}차 ${isOpen?"클로즈":"오픈"} 완료! ✓`);
+    setTimeout(()=>setProdMsg(""),1500);
+  };
+
+  const addOpenMonth=async()=>{
+    const list=await db.get(`openMonths:${prodGrade}`)||[];
+    if(list.find(om=>om.year===newOpenMonth.year&&om.month===newOpenMonth.month)){setProdMsg("이미 오픈된 달입니다.");setTimeout(()=>setProdMsg(""),2000);return;}
+    const next=[...list,{id:`om${Date.now()}`,year:newOpenMonth.year,month:newOpenMonth.month}];
+    await db.set(`openMonths:${prodGrade}`,next);setOpenRefresh(r=>r+1);
+    setProdMsg(`${newOpenMonth.year}년 ${newOpenMonth.month}월 오픈 완료! ✓`);setTimeout(()=>setProdMsg(""),2000);
+  };
+
+  const uploadPhoto=async(setter,file)=>{if(!file)return;setter(await compressImage(file));};
+  const updBlog=(i,v)=>setAct(a=>({...a,blogs:a.blogs.map((b,j)=>j===i?{link:v}:b)}));
+  const addBlog=()=>setAct(a=>({...a,blogs:[...a.blogs,{link:""}]}));
+  const delBlog=i=>setAct(a=>({...a,blogs:a.blogs.filter((_,j)=>j!==i)}));
+  const updViral=(i,f,v)=>setAct(a=>({...a,virals:a.virals.map((x,j)=>j===i?{...x,[f]:v}:x)}));
+  const addViral=()=>setAct(a=>({...a,virals:[...a.virals,{link:"",photo:null}]}));
+  const delViral=i=>setAct(a=>({...a,virals:a.virals.filter((_,j)=>j!==i)}));
+  const updExtra=(i,f,v)=>setAct(a=>({...a,extras:a.extras.map((x,j)=>j===i?{...x,[f]:v}:x)}));
+  const addExtra=()=>setAct(a=>({...a,extras:[...a.extras,{link:"",photo:null}]}));
+  const delExtra=i=>setAct(a=>({...a,extras:a.extras.filter((_,j)=>j!==i)}));
+
+  const sendInquiry=async()=>{
+    if(!iqf.title||!iqf.content){setIqMsg("제목과 내용을 입력해 주세요.");return;}
+    setIqSending(true);
+    const list=await db.get(`inquiries:${me.id}`)||[];
+    const next=[{id:`iq${Date.now()}`,title:iqf.title,content:iqf.content,date:new Date().toLocaleDateString("ko-KR"),reply:null,replyDate:null},...list];
+    if(await db.set(`inquiries:${me.id}`,next)){setMyInquiries(next);setIqf({title:"",content:""});setIqMsg("문의가 전송되었습니다! ✓");}
+    else setIqMsg("전송에 실패했습니다.");
+    setTimeout(()=>setIqMsg(""),2500);setIqSending(false);
+  };
+
+  const addSupporter=async()=>{
+    const{gen,nick,phone}=af;if(!gen||!nick||!phone){setAmsg("모든 항목을 입력해 주세요.");return;}
+    const list=await db.get("supporters")||[];
+    if(list.find(s=>s.gen===gen.trim()&&s.nick===nick.trim())){setAmsg("동일 기수/닉네임이 존재합니다.");return;}
+    const next=[...list,{id:`s${Date.now()}`,gen:gen.trim(),nick:nick.trim(),phone:phone.trim(),grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR")}];
+    await db.set("supporters",next);setSupps(next);setAf({gen:"",nick:"",phone:""});setAmsg("등록 완료! ✓");setTimeout(()=>setAmsg(""),2000);
+  };
+  const changeGrade=async(id,grade)=>{const next=supps.map(s=>s.id===id?{...s,grade}:s);await db.set("supporters",next);setSupps(next);};
+
+  // ── 회원정보 수정 저장 핸들러
+  const handleEditSave = async (id, fields) => {
+    const next = supps.map(s => s.id === id ? {...s, ...fields} : s);
+    const ok = await db.set("supporters", next);
+    if(ok){
+      setSupps(next);
+      setEditTarget(null);
+      setEditMsg(`✅ ${fields.nick} 회원정보가 수정되었습니다.`);
+      setTimeout(()=>setEditMsg(""), 3000);
+    } else {
+      setEditMsg("저장에 실패했습니다.");
+      setTimeout(()=>setEditMsg(""), 2500);
+    }
+  };
+
+  const toggleSelectByGen=gen=>{
+    const ids=supps.filter(s=>s.gen===gen).map(s=>s.id);
+    const allSelected=ids.every(id=>bulkSelected.has(id));
+    setBulkSelected(prev=>{
+      const next=new Set(prev);
+      if(allSelected) ids.forEach(id=>next.delete(id));
+      else ids.forEach(id=>next.add(id));
+      return next;
+    });
+  };
+  const toggleSelectAll=()=>{
+    if(bulkSelected.size===supps.length) setBulkSelected(new Set());
+    else setBulkSelected(new Set(supps.map(s=>s.id)));
+  };
+  const applyBulkGrade=async()=>{
+    if(bulkSelected.size===0){setBulkMsg("변경할 회원을 선택해 주세요.");setTimeout(()=>setBulkMsg(""),2000);return;}
+    if(!window.confirm(`선택한 ${bulkSelected.size}명을 ${GN[bulkTargetGrade]}으로 변경하시겠습니까?`))return;
+    setBulkSaving(true);
+    const next=supps.map(s=>bulkSelected.has(s.id)?{...s,grade:bulkTargetGrade}:s);
+    const ok=await db.set("supporters",next);
+    if(ok){setSupps(next);setBulkSelected(new Set());setBulkMsg(`✅ ${bulkSelected.size}명 변경 완료!`);}
+    else setBulkMsg("저장에 실패했습니다.");
+    setBulkSaving(false);setTimeout(()=>setBulkMsg(""),3000);
+  };
+  const delSupporter=async id=>{if(!window.confirm("정말 삭제하시겠습니까?"))return;const next=supps.filter(s=>s.id!==id);await db.set("supporters",next);setSupps(next);if(viewSupp?.id===id)setViewSupp(null);};
+  const saveNotice=async()=>{
+    if(!nf.title||!nf.content){setNmsg("제목과 내용을 입력해 주세요.");return;}
+    const list=nGrade===G.L?[...nlp]:[...nsc];list.unshift({id:`n${Date.now()}`,title:nf.title,content:nf.content,date:new Date().toLocaleDateString("ko-KR")});
+    await db.set(`notices:${nGrade}`,list);nGrade===G.L?setNlp(list):setNsc(list);
+    setNf({title:"",content:""});setNmsg("등록 완료! ✓");setTimeout(()=>setNmsg(""),2000);
+  };
+  const delNotice=async(grade,id)=>{const list=(grade===G.L?nlp:nsc).filter(n=>n.id!==id);await db.set(`notices:${grade}`,list);grade===G.L?setNlp(list):setNsc(list);};
+
+  const openSuppActs=async supp=>{
+    setViewSupp(supp);setLoadingVA(true);
+    const keys=await db.list(`activity:${supp.id}:`);
+    const acts=(await Promise.all(keys.map(k=>db.get(k)))).filter(Boolean);
+    acts.sort((a,b)=>b.year-a.year||b.month-a.month);
+    setViewActs(acts);setLoadingVA(false);
+  };
+
+  const loadAllInquiries=async()=>{
+    setLoadingIq(true);
+    const list=await db.get("supporters")||[];
+    const allIqs=await Promise.all(list.map(s=>db.get(`inquiries:${s.id}`).then(iqs=>(iqs||[]).map(iq=>({...iq,suppId:s.id,suppName:`${s.gen} · ${s.nick}`,grade:s.grade})))));
+    const result=allIqs.flat().sort((a,b)=>b.id.localeCompare(a.id));
+    setAllInquiries(result);setLoadingIq(false);
+  };
+
+  const sendReply=async()=>{
+    if(!replyText.trim()){setReplyMsg("답변 내용을 입력해 주세요.");return;}
+    const iqs=await db.get(`inquiries:${selInquiry.suppId}`)||[];
+    const next=iqs.map(iq=>iq.id===selInquiry.id?{...iq,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")}:iq);
+    if(await db.set(`inquiries:${selInquiry.suppId}`,next)){
+      const updated={...selInquiry,reply:replyText.trim(),replyDate:new Date().toLocaleDateString("ko-KR")};
+      setSelInquiry(updated);setAllInquiries(prev=>prev.map(iq=>iq.id===selInquiry.id?updated:iq));
+      setReplyMsg("답변 등록 완료! ✓");setReplyText("");
+    }else setReplyMsg("등록에 실패했습니다.");
+    setTimeout(()=>setReplyMsg(""),2500);
+  };
+  const downloadTemplate=()=>{
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([["기수","닉네임","전화번호끝4자리","수령인실명","배송연락처","우편번호","주소","상세주소"],["1기","예시닉네임","1234","홍길동","010-1234-5678","12345","서울시 강남구 테헤란로 1","101호"]]);
+    ws["!cols"]=[{wch:8},{wch:12},{wch:14},{wch:12},{wch:16},{wch:10},{wch:30},{wch:20}];
+    XLSX.utils.book_append_sheet(wb,ws,"써포터즈목록");XLSX.writeFile(wb,"써포터즈_등록_양식.xlsx");
+  };
+  const handleExcelUpload=async file=>{
+    setExcelErr("");setExcelPreview([]);
+    try{
+      const ab=await file.arrayBuffer();const wb=XLSX.read(ab,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      const parsed=rows.slice(1).filter(r=>r[0]||r[1]||r[2]).map(r=>({gen:String(r[0]||"").trim(),nick:String(r[1]||"").trim(),phone:String(r[2]||"").trim(),name:String(r[3]||"").trim(),deliveryPhone:String(r[4]||"").trim(),zonecode:String(r[5]||"").trim(),address:String(r[6]||"").trim(),addressDetail:String(r[7]||"").trim()})).filter(r=>r.gen&&r.nick&&r.phone);
+      if(!parsed.length){setExcelErr("유효한 데이터가 없습니다.");return;}setExcelPreview(parsed);
+    }catch{setExcelErr("파일을 읽을 수 없습니다.");}
+  };
+  const confirmExcelUpload=async()=>{
+    const existing=await db.get("supporters")||[];let added=0;
+    const newMembers=excelPreview.filter(p=>!existing.find(s=>s.gen===p.gen&&s.nick===p.nick))
+      .map(p=>({id:`s${Date.now()}_${Math.random().toString(36).slice(2,6)}`,gen:p.gen,nick:p.nick,phone:p.phone,grade:G.L,joinDate:new Date().toLocaleDateString("ko-KR"),_addr:p.address?{name:p.name,phone:p.deliveryPhone,zonecode:p.zonecode,address:p.address,addressDetail:p.addressDetail}:null}));
+    await Promise.all(newMembers.map(ns=>ns._addr?db.set(`address:${ns.id}`,ns._addr):Promise.resolve()));
+    const clean=newMembers.map(({_addr,...rest})=>rest);
+    added=clean.length;
+    const next=[...existing,...clean];
+    await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(`${added}명 등록 완료!`);setTimeout(()=>setAmsg(""),3000);
+  };
+
   const downloadActivityExcel=async()=>{
     setDownloadingAct(true);const wb=XLSX.utils.book_new();
-    const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
+    const targetSupps=supps.filter(s=>(actGrade==="전체"||s.grade===actGrade));
+    const sum=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","차수","제품명","제품코드","제출여부","총건수","블로그","바이럴","기타"]];
     const blog=[["기수","닉네임","등급","년도","월","순번","링크"]];
     const viral=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     const extra=[["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
-    await Promise.all(supps.map(async s=>{
+    await Promise.all(targetSupps.map(async s=>{
       const grade=GN[s.grade];
-      const[addr,keys]=await Promise.all([db.get(`address:${s.id}`),db.list(`activity:${s.id}:`)]);
+      const[addr,d]=await Promise.all([db.get(`address:${s.id}`),db.get(`activity:${s.id}:${actYear}:${actMonth}`)]);
       const addrData=addr||{};
-      const actData=await Promise.all(keys.sort().map(async k=>{const d=await db.get(k);return{k,d};}));
+      if(!d)return;
       const selKeys=s.grade===G.L?await db.list(`selection:${s.id}:cha:`):[];
       const selDatas=await Promise.all(selKeys.map(ck=>db.get(ck)));
       const selMap={};
-      selDatas.forEach((cs,i)=>{if(cs)selMap[`${cs.selYear}_${cs.selMonth}`]={productName:cs.productName,productCode:cs.productCode,cha:`${cs.cha}차`};});
-      for(const{k,d} of actData){
-        if(!d)continue;
-        const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
-        let selInfo={productName:"",productCode:"",cha:""};
-        if(s.grade===G.L){selInfo=selMap[`${d.year}_${d.month}`]||selInfo;}
-        else{const sel=await db.get(`selection:${s.id}:${d.year}:${d.month}`);if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};}
-        sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",addrData.address||"",addrData.addressDetail||"",d.year,d.month,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
-        (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,d.year,d.month,i+1,b.link]);});
-        (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,d.year,d.month,i+1,v.link||"",v.photo?"O":"X"]);});
-        (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,d.year,d.month,i+1,e.link||"",e.photo?"O":"X"]);});
-      }
+      selDatas.forEach(cs=>{if(cs)selMap[cs.selYear+"_"+cs.selMonth]={productName:cs.productName,productCode:cs.productCode,cha:cs.cha+"차"};});
+      const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
+      let selInfo={productName:"",productCode:"",cha:""};
+      if(s.grade===G.L){selInfo=selMap[actYear+"_"+actMonth]||selInfo;}
+      else{const sel=await db.get("selection:"+s.id+":"+actYear+":"+actMonth);if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};}
+      sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+      (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]);});
+      (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]);});
+      (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]);});
     }));
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data])=>{const ws=XLSX.utils.aoa_to_sheet(data);ws["!cols"]=Array(data[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,name);});
-    XLSX.writeFile(wb,`LALUPPY_활동내역_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
+    const gradeLabel=actGrade==="전체"?"전체":GN[actGrade];
+    XLSX.writeFile(wb,"LALUPPY_활동내역_"+actYear+"년"+actMonth+"월_"+gradeLabel+".xlsx");
     setDownloadingAct(false);
   };
 
   const downloadSelectionExcel=async()=>{
     setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
+    const gradeLabel=actGrade==="전체"?"전체":GN[actGrade];
+    const doLaroupi=actGrade==="전체"||actGrade===G.L;
+    const doSecret=actGrade==="전체"||actGrade===G.S;
     const laroupiSupps=supps.filter(s=>s.grade===G.L);
     const secretSupps=supps.filter(s=>s.grade===G.S);
-    await Promise.all(LACHAS.map(async cha=>{
-      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","차수","제품명","제품코드","신청일시"]];
+    if(doLaroupi){
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","차수","제품명","제품코드","신청일시"]];
       await Promise.all(laroupiSupps.map(async s=>{
-        const[sel,addr]=await Promise.all([db.get(`selection:${s.id}:cha:${cha}`),db.get(`address:${s.id}`)]);
-        if(!sel)return;
+        const keys=await db.list("selection:"+s.id+":cha:");
+        const sels=await Promise.all(keys.map(k=>db.get(k)));
+        const filtered=sels.filter(sel=>sel&&sel.selYear===actYear&&sel.selMonth===actMonth);
+        if(!filtered.length)return;
+        const addr=await db.get("address:"+s.id);
         const a=addr||{};
-        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",`${cha}차`,sel.productName,sel.productCode,`${sel.selYear||""}년 ${sel.selMonth||""}월`]);
+        filtered.forEach(sel=>{
+          rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),sel.cha+"차",sel.productName,sel.productCode,sel.selYear+"년 "+sel.selMonth+"월"]);
+        });
       }));
-      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,`라루피_${cha}차`);}
-    }));
-    const ymSet=new Set();
-    await Promise.all(secretSupps.map(async s=>{
-      const keys=await db.list(`selection:${s.id}:`);
-      keys.filter(k=>!k.includes(":cha:")).forEach(k=>{const parts=k.split(":");ymSet.add(`${parts[parts.length-2]}_${parts[parts.length-1]}`);});
-    }));
-    await Promise.all([...ymSet].sort().map(async ym=>{
-      const[y,m]=ym.split("_");
-      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","상세주소","년도","월","제품명","제품코드"]];
+      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,"라루피_"+actYear+"년"+actMonth+"월");}
+    }
+    if(doSecret){
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","제품명","제품코드"]];
       await Promise.all(secretSupps.map(async s=>{
-        const[sel,addr]=await Promise.all([db.get(`selection:${s.id}:${y}:${m}`),db.get(`address:${s.id}`)]);
+        const sel=await db.get("selection:"+s.id+":"+actYear+":"+actMonth);
         if(!sel)return;
+        const addr=await db.get("address:"+s.id);
         const a=addr||{};
-        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",a.address||"",a.addressDetail||"",y,m,sel.productName,sel.productCode]);
+        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),actYear,actMonth,sel.productName,sel.productCode]);
       }));
-      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,`시크릿_${y}년${m}월`);}
-    }));
-    if(wb.SheetNames.length===0){const ws=XLSX.utils.aoa_to_sheet([["신청된 제품이 없습니다."]]);XLSX.utils.book_append_sheet(wb,ws,"결과없음");}
-    XLSX.writeFile(wb,`LALUPPY_신청상품취합_${new Date().toLocaleDateString("ko-KR").replace(/\./g,"").replace(/ /g,"")}.xlsx`);
+      if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,"시크릿_"+actYear+"년"+actMonth+"월");}
+    }
+    if(wb.SheetNames.length===0){const ws=XLSX.utils.aoa_to_sheet([["해당 월 신청된 제품이 없습니다."]]);XLSX.utils.book_append_sheet(wb,ws,"결과없음");}
+    XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+actYear+"년"+actMonth+"월_"+gradeLabel+".xlsx");
     setDownloadingSel(false);
   };
-
   const PC=BRAND.primary,BG="#FAF8F5",CARD="#fff",BORDER="#E8E0D5",TEXT="#2C2C2C",MUTED="#888";
   const inp={width:"100%",padding:"10px 14px",border:`1px solid ${BORDER}`,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
   const btn=(bg,color="#fff",sm)=>({background:bg,color,border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
@@ -1257,6 +1815,10 @@ export default function App(){
               <select value={actGen} onChange={e=>setActGen(e.target.value)} style={sel}><option value="전체">전체 기수</option>{[...new Set(supps.map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}</select>
               <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={sel}><option value="전체">전체 등급</option><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>
               <button onClick={()=>loadActSummary(actYear)} style={btn("#EEE8E0",TEXT,true)}>새로고침</button>
+            </div>
+            {/* 엑셀 다운로드 - 선택한 연도/월/등급 기준 표시 */}
+            <div style={{background:BRAND.primaryLight,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:PC,fontWeight:700}}>
+              📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGrade==="전체"?"전체 등급":GN[actGrade]}
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               <button onClick={downloadActivityExcel} disabled={downloadingAct||downloadingSel} style={{...btn(PC,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingAct?0.7:1}}>{downloadingAct?"생성 중...":"📥 활동내역 엑셀"}</button>

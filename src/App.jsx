@@ -30,6 +30,14 @@ const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
 const LACHAS=[1,2,3,4,5,6];
 const BRAND={logoUrl:"/logo.png",logoText:"LALUPPY",primary:"#004638",primaryLight:"#E6F0ED"};
 
+// ── 등급별 기본 신청 가능 건수
+const BASE_QUOTA = { laroupi: 2, laroupisecret: 1 };
+
+// ── 날짜 포맷 (년.월.일)
+function formatDate(d) {
+  return d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,"0") + "." + String(d.getDate()).padStart(2,"0");
+}
+
 async function compressImage(file){
   return new Promise(res=>{
     const r=new FileReader();
@@ -155,11 +163,14 @@ export default function App(){
   const[selYr,setSelYr]=useState(new Date().getFullYear());
   const[selMo,setSelMo]=useState(new Date().getMonth()+1);
   const[availableProds,setAvailableProds]=useState([]);
-  const[mySelection,setMySelection]=useState(null);
+  // ── 내 신청 목록 (복수)
+  const[mySelections,setMySelections]=useState([]);
   const[selMsg,setSelMsg]=useState("");
   const[canSelectProduct,setCanSelectProduct]=useState(false);
   const[canSelectReason,setCanSelectReason]=useState("");
   const[selConfirmProd,setSelConfirmProd]=useState(null);
+  // ── 내 신청 가능 최대 건수
+  const[myQuota,setMyQuota]=useState(BASE_QUOTA[G.L]);
   const[atab,setAtab]=useState("supporters");
   const[supps,setSupps]=useState([]);
   const[nlp,setNlp]=useState([]);
@@ -207,6 +218,52 @@ export default function App(){
   const[suppSearch,setSuppSearch]=useState("");
   const[suppSearchGrade,setSuppSearchGrade]=useState("전체");
 
+  // ── 추가 신청 허용 관리자 UI 상태
+  const[extraQuotaList,setExtraQuotaList]=useState([]); // [{suppId, suppName, extraCount, grade, key}]
+  const[extraQuotaSearch,setExtraQuotaSearch]=useState("");
+  const[extraQuotaMsg,setExtraQuotaMsg]=useState("");
+  const[loadingEQ,setLoadingEQ]=useState(false);
+
+  // ── 추가 신청 허용 키 생성
+  const extraQuotaKey = (grade, cha, year, month) =>
+    grade===G.L ? "extraQuota:laroupi:cha:"+cha : "extraQuota:"+grade+":"+year+":"+month;
+
+  // ── 추가 신청 허용 목록 로드
+  const loadExtraQuota = async () => {
+    setLoadingEQ(true);
+    const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
+    const data = await db.get(key) || {};
+    // {suppId: extraCount} 형태 → 표시용 배열
+    const list = Object.entries(data).map(([suppId, extraCount]) => {
+      const supp = supps.find(s=>s.id===suppId);
+      return { suppId, extraCount, suppName: supp ? supp.gen+" · "+supp.nick : suppId, grade: supp?.grade||"" };
+    });
+    setExtraQuotaList(list);
+    setLoadingEQ(false);
+  };
+
+  // ── 추가 신청 허용 저장
+  const saveExtraQuota = async (suppId, extraCount) => {
+    const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
+    const data = await db.get(key) || {};
+    if(extraCount <= 0) { delete data[suppId]; }
+    else { data[suppId] = extraCount; }
+    await db.set(key, data);
+    await loadExtraQuota();
+  };
+
+  // ── 내 쿼터 로드 (서포터즈 화면용)
+  const loadMyQuota = async () => {
+    if(!me) return;
+    const base = BASE_QUOTA[me.grade] || 1;
+    let extraKey;
+    if(me.grade===G.L) extraKey = "extraQuota:laroupi:cha:"+selectedCha;
+    else extraKey = "extraQuota:"+me.grade+":"+selYr+":"+selMo;
+    const data = await db.get(extraKey) || {};
+    const extra = data[me.id] || 0;
+    setMyQuota(base + extra);
+  };
+
   useEffect(()=>{
     if(view==="admin"){
       db.get("supporters").then(d=>{const l=d||[];setSupps(l);loadActSummary(actYear,l);});
@@ -233,13 +290,18 @@ export default function App(){
 
   useEffect(()=>{
     if(me&&sp==="product"){
-      Promise.all([loadAvailableProds(),loadMySelection(),loadCanSelect()]);
+      Promise.all([loadAvailableProds(),loadMySelections(),loadCanSelect(),loadMyQuota()]);
     }
   },[me,sp,selectedCha,selYr,selMo]);
 
   useEffect(()=>{
-    if(atab==="products"&&view==="admin")loadAdminProds();
+    if(atab==="products"&&view==="admin"){loadAdminProds();loadExtraQuota();}
   },[atab,prodGrade,prodYear,prodMonth,prodCha]);
+
+  // prodCha/prodMonth 등 바뀔 때도 extraQuota 재로드
+  useEffect(()=>{
+    if(atab==="products"&&view==="admin"&&supps.length>0){loadExtraQuota();}
+  },[prodGrade,prodCha,prodYear,prodMonth,supps.length]);
 
   const loadMySaved=async uid=>{
     if(me?.grade===G.L){
@@ -265,14 +327,23 @@ export default function App(){
     else setAvailableProds(await db.get("products:"+me.grade+":"+selYr+":"+selMo)||[]);
   };
 
-  const loadMySelection=async()=>{
+  // ── 내 신청 목록 로드 (복수 지원)
+  const loadMySelections=async()=>{
     if(!me)return;
-    if(me.grade===G.L)setMySelection(await db.get("selection:"+me.id+":cha:"+selectedCha)||null);
-    else setMySelection(await db.get("selection:"+me.id+":"+selYr+":"+selMo)||null);
+    if(me.grade===G.L){
+      // 라루피: selection:uid:cha:N:slot:M 형태로 저장 (슬롯별)
+      const keys=await db.list("selection:"+me.id+":cha:"+selectedCha+":slot:");
+      const list=await Promise.all(keys.map(k=>db.get(k)));
+      setMySelections(list.filter(Boolean));
+    } else {
+      const keys=await db.list("selection:"+me.id+":"+selYr+":"+selMo+":slot:");
+      const list=await Promise.all(keys.map(k=>db.get(k)));
+      setMySelections(list.filter(Boolean));
+    }
   };
 
-  useEffect(()=>{if(me&&me.grade===G.S&&sp==="product")setMySelection(null);},[selYr,selMo]);
-  useEffect(()=>{if(me&&me.grade===G.L&&sp==="product")setMySelection(null);},[selectedCha]);
+  useEffect(()=>{if(me&&me.grade===G.S&&sp==="product")setMySelections([]);},[selYr,selMo]);
+  useEffect(()=>{if(me&&me.grade===G.L&&sp==="product")setMySelections([]);},[selectedCha]);
 
   const loadAdminProds=async()=>{
     if(prodGrade===G.L)setProdList(await db.get("products:laroupi:cha:"+prodCha)||[]);
@@ -282,25 +353,24 @@ export default function App(){
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
-      const keys=await db.list("selection:"+me.id+":cha:");
-      if(keys.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const chaNums=keys.map(k=>+k.split(":cha:")[1]).filter(n=>!isNaN(n));
-      const lastCha=Math.max(...chaNums);
-      const[lastSel,actKeys]=await Promise.all([db.get("selection:"+me.id+":cha:"+lastCha),db.list("activity:"+me.id+":")]);
-      if(!lastSel){setCanSelectProduct(true);setCanSelectReason("");return;}
-      const{selYear,selMonth}=lastSel;
-      const relevantKeys=actKeys.filter(k=>{const p=k.split(":");const aY=+p[2],aM=+p[3];return aY>selYear||(aY===selYear&&aM>=selMonth);});
-      const acts=await Promise.all(relevantKeys.map(k=>db.get(k)));
-      const hasSubmitted=acts.some(a=>a?.submitted);
-      if(hasSubmitted){setCanSelectProduct(true);setCanSelectReason("");}
-      else{setCanSelectProduct(false);setCanSelectReason(lastCha+"차 신청 후 활동을 먼저 제출해 주세요.");}
+      // 이전 차수 활동 제출 여부 확인
+      const allSelKeys=await db.list("selection:"+me.id+":cha:");
+      // 현재 차수 이전의 차수들에서 마지막 제출된 활동 체크
+      if(selectedCha===1){setCanSelectProduct(true);setCanSelectReason("");return;}
+      const prevCha=selectedCha-1;
+      const prevActKey="activity:"+me.id+":cha:"+prevCha;
+      const prevAct=await db.get(prevActKey);
+      if(!prevAct){setCanSelectProduct(true);setCanSelectReason("");return;}
+      if(prevAct.submitted){setCanSelectProduct(true);setCanSelectReason("");}
+      else{setCanSelectProduct(false);setCanSelectReason(prevCha+"차 활동을 먼저 제출해 주세요.");}
     } else {
       const keys=await db.list("selection:"+me.id+":");
-      const filtered=keys.filter(k=>!k.includes(":cha:"));
+      const filtered=keys.filter(k=>!k.includes(":slot:"));
       if(filtered.length===0){setCanSelectProduct(true);setCanSelectReason("");return;}
       const sels=(await Promise.all(filtered.map(k=>db.get(k)))).filter(Boolean);
       sels.sort((a,b)=>b.year-a.year||b.month-a.month);
       const last=sels[0];
+      if(!last){setCanSelectProduct(true);setCanSelectReason("");return;}
       const lastAct=await db.get("activity:"+me.id+":"+last.year+":"+last.month);
       if(lastAct?.submitted){setCanSelectProduct(true);setCanSelectReason("");}
       else{setCanSelectProduct(false);setCanSelectReason(last.year+"년 "+last.month+"월 활동을 먼저 제출해 주세요.");}
@@ -390,17 +460,28 @@ export default function App(){
 
   const handleSelectProduct=prod=>{if(!canSelectProduct)return;setSelConfirmProd(prod);};
 
+  // ── 제품 신청 확정 (슬롯 기반 복수 저장)
   const confirmProductSelection=async()=>{
     const prod=selConfirmProd;if(!prod)return;
     const now=new Date();
-    const sel=me.grade===G.L
-      ?{productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,selYear:now.getFullYear(),selMonth:now.getMonth()+1}
-      :{productId:prod.id,productName:prod.name,productCode:prod.code,year:selYr,month:selMo};
-    const key=me.grade===G.L?"selection:"+me.id+":cha:"+selectedCha:"selection:"+me.id+":"+selYr+":"+selMo;
+    const dateStr=formatDate(now);
+    const slot=mySelections.length+1; // 다음 슬롯 번호
+    let key, sel;
+    if(me.grade===G.L){
+      key="selection:"+me.id+":cha:"+selectedCha+":slot:"+slot;
+      sel={productId:prod.id,productName:prod.name,productCode:prod.code,cha:selectedCha,
+           selYear:now.getFullYear(),selMonth:now.getMonth()+1,selDate:dateStr,slot};
+    } else {
+      key="selection:"+me.id+":"+selYr+":"+selMo+":slot:"+slot;
+      sel={productId:prod.id,productName:prod.name,productCode:prod.code,
+           year:selYr,month:selMo,selDate:dateStr,slot};
+    }
     const ok=await db.set(key,sel);
     setSelConfirmProd(null);
-    if(ok){setMySelection(sel);setSelMsg("제품이 최종 신청되었습니다! ✓");}
-    else setSelMsg("저장에 실패했습니다.");
+    if(ok){
+      await loadMySelections();
+      setSelMsg("제품이 신청되었습니다! ✓ ("+slot+"/"+myQuota+"건)");
+    } else setSelMsg("저장에 실패했습니다.");
     setTimeout(()=>setSelMsg(""),2500);
   };
 
@@ -573,7 +654,7 @@ export default function App(){
     await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(added+"명 등록 완료!");setTimeout(()=>setAmsg(""),3000);
   };
 
-  // ── 활동내역 엑셀 (선택한 연도·월·등급 기준)
+  // ── 활동내역 엑셀 (기존 유지)
   const downloadActivityExcel=async()=>{
     setDownloadingAct(true);const wb=XLSX.utils.book_new();
     const targetSupps=supps.filter(s=>actGrade==="전체"||s.grade===actGrade);
@@ -586,15 +667,24 @@ export default function App(){
       const[addr,d]=await Promise.all([db.get("address:"+s.id),db.get("activity:"+s.id+":"+actYear+":"+actMonth)]);
       const addrData=addr||{};
       if(!d)return;
-      const selKeys=s.grade===G.L?await db.list("selection:"+s.id+":cha:"):[];
-      const selDatas=await Promise.all(selKeys.map(ck=>db.get(ck)));
-      const selMap={};
-      selDatas.forEach(cs=>{if(cs)selMap[cs.selYear+"_"+cs.selMonth]={productName:cs.productName,productCode:cs.productCode,cha:cs.cha+"차"};});
+      // 신청 목록 (슬롯 기반)
+      let selItems=[];
+      if(s.grade===G.L){
+        const slotKeys=await db.list("selection:"+s.id+":cha:");
+        const allSels=(await Promise.all(slotKeys.map(k=>db.get(k)))).filter(Boolean);
+        selItems=allSels.filter(cs=>cs.selYear===actYear&&cs.selMonth===actMonth);
+      } else {
+        const slotKeys=await db.list("selection:"+s.id+":"+actYear+":"+actMonth+":slot:");
+        selItems=(await Promise.all(slotKeys.map(k=>db.get(k)))).filter(Boolean);
+      }
       const bc=(d.blogs||[]).filter(b=>b.link).length,vc=(d.virals||[]).filter(v=>v.link||v.photo).length,ec=(d.extras||[]).filter(e=>e.link||e.photo).length;
-      let selInfo={productName:"",productCode:"",cha:""};
-      if(s.grade===G.L){selInfo=selMap[actYear+"_"+actMonth]||selInfo;}
-      else{const sel=await db.get("selection:"+s.id+":"+actYear+":"+actMonth);if(sel)selInfo={productName:sel.productName,productCode:sel.productCode,cha:""};}
-      sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,selInfo.cha,selInfo.productName,selInfo.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+      if(selItems.length===0){
+        sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,"","","",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+      } else {
+        selItems.forEach(sel=>{
+          sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,s.grade===G.L?(sel.cha+"차"):"",sel.productName,sel.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        });
+      }
       (d.blogs||[]).forEach((b,i)=>{if(b.link)blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]);});
       (d.virals||[]).forEach((v,i)=>{if(v.link||v.photo)viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]);});
       (d.extras||[]).forEach((e,i)=>{if(e.link||e.photo)extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]);});
@@ -605,7 +695,7 @@ export default function App(){
     setDownloadingAct(false);
   };
 
-  // ── 신청상품 취합 (선택한 연도·월·등급 기준)
+  // ── 신청상품 취합 (날짜 포함, 복수 슬롯 지원)
   const downloadSelectionExcel=async()=>{
     setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
@@ -614,32 +704,41 @@ export default function App(){
     const doSecret=actGrade==="전체"||actGrade===G.S;
     const laroupiSupps=supps.filter(s=>s.grade===G.L);
     const secretSupps=supps.filter(s=>s.grade===G.S);
+
     if(doLaroupi){
-      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","차수","제품명","제품코드","신청일시"]];
+      // 라루피: 슬롯 기반으로 조회
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","차수","슬롯","제품명","제품코드","신청날짜"]];
       await Promise.all(laroupiSupps.map(async s=>{
-        const keys=await db.list("selection:"+s.id+":cha:");
-        const sels=await Promise.all(keys.map(k=>db.get(k)));
-        const filtered=sels.filter(sel=>sel&&sel.selYear===actYear&&sel.selMonth===actMonth);
+        // 모든 차수의 슬롯 키 조회 후 selYear/selMonth로 필터
+        const allKeys=await db.list("selection:"+s.id+":cha:");
+        const allSels=(await Promise.all(allKeys.map(k=>db.get(k)))).filter(Boolean);
+        const filtered=allSels.filter(sel=>sel.selYear===actYear&&sel.selMonth===actMonth);
         if(!filtered.length)return;
         const addr=await db.get("address:"+s.id);
         const a=addr||{};
-        filtered.forEach(sel=>{
-          rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),sel.cha+"차",sel.productName,sel.productCode,sel.selYear+"년 "+sel.selMonth+"월"]);
+        filtered.sort((x,y)=>(x.slot||1)-(y.slot||1)).forEach(sel=>{
+          rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),sel.cha+"차",sel.slot||1,sel.productName,sel.productCode,sel.selDate||""]);
         });
       }));
       if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,"라루피_"+actYear+"년"+actMonth+"월");}
     }
+
     if(doSecret){
-      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","제품명","제품코드"]];
+      // 시크릿: 슬롯 기반으로 조회
+      const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","슬롯","제품명","제품코드","신청날짜"]];
       await Promise.all(secretSupps.map(async s=>{
-        const sel=await db.get("selection:"+s.id+":"+actYear+":"+actMonth);
-        if(!sel)return;
+        const slotKeys=await db.list("selection:"+s.id+":"+actYear+":"+actMonth+":slot:");
+        const sels=(await Promise.all(slotKeys.map(k=>db.get(k)))).filter(Boolean);
+        if(!sels.length)return;
         const addr=await db.get("address:"+s.id);
         const a=addr||{};
-        rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),actYear,actMonth,sel.productName,sel.productCode]);
+        sels.sort((x,y)=>(x.slot||1)-(y.slot||1)).forEach(sel=>{
+          rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),actYear,actMonth,sel.slot||1,sel.productName,sel.productCode,sel.selDate||""]);
+        });
       }));
       if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=Array(rows[0].length).fill({wch:14});XLSX.utils.book_append_sheet(wb,ws,"시크릿_"+actYear+"년"+actMonth+"월");}
     }
+
     if(wb.SheetNames.length===0){const ws=XLSX.utils.aoa_to_sheet([["해당 월 신청된 제품이 없습니다."]]);XLSX.utils.book_append_sheet(wb,ws,"결과없음");}
     XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+actYear+"년"+actMonth+"월_"+gradeLabel+".xlsx");
     setDownloadingSel(false);
@@ -649,7 +748,7 @@ export default function App(){
   const inp={width:"100%",padding:"10px 14px",border:"1px solid "+BORDER,borderRadius:8,fontSize:14,outline:"none",boxSizing:"border-box",background:"#FAFAFA",marginBottom:10,fontFamily:"inherit"};
   const btn=(bg,color,sm)=>({background:bg,color:color||"#fff",border:"none",borderRadius:sm?6:8,padding:sm?"5px 10px":"11px 18px",fontSize:sm?12:14,fontWeight:700,cursor:"pointer"});
   const card={background:CARD,borderRadius:14,padding:18,boxShadow:"0 2px 10px rgba(0,0,0,0.06)",marginBottom:14};
-  const tag=g=>({display:"inline-block",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:GB[g],color:GC[g]});
+  const tag=g=>({display:"inline-block",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:GB[g]||"#EEE",color:GC[g]||"#333"});
   const lbl={fontSize:12,fontWeight:700,color:MUTED,marginBottom:4,display:"block"};
   const ctr={maxWidth:500,margin:"0 auto",padding:"0 16px"};
   const sel={border:"1px solid "+BORDER,borderRadius:8,padding:"6px 10px",fontSize:13,fontWeight:700,color:PC,background:BRAND.primaryLight,cursor:"pointer",outline:"none"};
@@ -677,6 +776,7 @@ export default function App(){
   const ConfirmModal=()=>{
     if(!selConfirmProd)return null;
     const isL=me?.grade===G.L;
+    const nextSlot=mySelections.length+1;
     return(
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
         <div style={{background:CARD,borderRadius:18,padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
@@ -688,7 +788,9 @@ export default function App(){
           <div style={{background:BRAND.primaryLight,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
             <div style={{fontWeight:800,fontSize:15,color:PC,marginBottom:4}}>{selConfirmProd.name}</div>
             <div style={{fontSize:12,color:MUTED}}>제품 코드: {selConfirmProd.code}</div>
-            <div style={{fontSize:12,color:MUTED,marginTop:4}}>{isL?selectedCha+"차 신청":selYr+"년 "+selMo+"월 신청"}</div>
+            <div style={{fontSize:12,color:MUTED,marginTop:4}}>
+              {isL?selectedCha+"차 신청":selYr+"년 "+selMo+"월 신청"} · {nextSlot}/{myQuota}번째 신청
+            </div>
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setSelConfirmProd(null)} style={{...btn("#EEE8E0",TEXT),flex:1}}>취소</button>
@@ -733,6 +835,7 @@ export default function App(){
   // ── SUPPORTER
   if(view==="supporter"&&me){
     const isL=me.grade===G.L;
+    const canAddMore = canSelectProduct && mySelections.length < myQuota;
     return(
       <div style={{minHeight:"100vh",background:BG,fontFamily:"'Noto Sans KR',sans-serif",color:TEXT,paddingBottom:60}}>
         <ConfirmModal/>
@@ -831,16 +934,29 @@ export default function App(){
             </div>
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:PC}}>{savMsg}</div>}
           </>)}
+
           {sp==="product"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
+
+            {/* 신청 가능 여부 안내 */}
             {!canSelectProduct?(
               <div style={{padding:"12px 14px",background:"#FDECEA",borderRadius:10,marginBottom:14,fontSize:13,color:"#C0392B",fontWeight:600}}>
                 ⚠️ {canSelectReason}
                 <div style={{marginTop:8}}><button onClick={()=>setSp("months")} style={btn("#C0392B",undefined,true)}>활동 입력하러 가기 →</button></div>
               </div>
             ):(
-              <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>✅ 제품 신청이 가능합니다!</div>
+              mySelections.length >= myQuota ? (
+                <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
+                  ✅ {myQuota}건 신청 완료! 이번 {isL?"차수":"기간"} 신청이 모두 완료되었습니다.
+                </div>
+              ) : (
+                <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
+                  ✅ 제품 신청 가능 · {mySelections.length}/{myQuota}건 신청됨
+                  {myQuota > BASE_QUOTA[me.grade] && <span style={{marginLeft:6,fontSize:11,background:"#C8E6C9",borderRadius:6,padding:"1px 7px"}}>+{myQuota-BASE_QUOTA[me.grade]} 추가 허용</span>}
+                </div>
+              )
             )}
+
             <div style={card}>
               {isL?(
                 <>
@@ -854,7 +970,6 @@ export default function App(){
                       </button>);
                     })}
                   </div>
-                  <div style={{fontSize:12,color:MUTED,marginBottom:14}}>💡 관리자가 오픈한 차수만 선택 가능합니다.</div>
                 </>
               ):(
                 <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -862,27 +977,54 @@ export default function App(){
                   <select value={selMo} onChange={e=>setSelMo(+e.target.value)} style={{...sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
                 </div>
               )}
-              {mySelection&&(<div style={{padding:"10px 14px",background:BRAND.primaryLight,borderRadius:8,marginBottom:14}}>
-                <div style={{fontSize:11,color:PC,fontWeight:700,marginBottom:2}}>✅ {isL?selectedCha+"차":selYr+"년 "+selMo+"월"} 선택된 제품</div>
-                <div style={{fontWeight:700}}>{mySelection.productName}</div>
-                <div style={{fontSize:12,color:MUTED}}>코드: {mySelection.productCode}</div>
-              </div>)}
-              {availableProds.length===0
-                ?<div style={{textAlign:"center",color:MUTED,padding:32,fontSize:13}}>선택 가능한 제품이 없습니다.</div>
-                :<div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {availableProds.map(p=>{
-                    const isSelected=mySelection?.productId===p.id;
-                    const disabled=!canSelectProduct||!!mySelection;
-                    return(<div key={p.id} onClick={()=>!disabled&&handleSelectProduct(p)}
-                      style={{padding:"14px 16px",borderRadius:10,border:"2px solid "+(isSelected?PC:BORDER),background:isSelected?BRAND.primaryLight:disabled?"#F5F5F5":CARD,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled&&!isSelected?0.6:1}}>
-                      <div><div style={{fontWeight:700,fontSize:14,color:disabled&&!isSelected?MUTED:TEXT}}>{p.name}</div><div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div></div>
-                      {isSelected?<span style={{color:PC,fontWeight:700,fontSize:18}}>✓</span>:disabled?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>신청불가</span>:<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
-                    </div>);
-                  })}
-                </div>}
+
+              {/* 신청된 제품 목록 */}
+              {mySelections.length>0&&(
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>신청된 제품</div>
+                  {mySelections.map((sel,i)=>(
+                    <div key={i} style={{padding:"10px 14px",background:BRAND.primaryLight,borderRadius:8,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:11,color:PC,fontWeight:700,marginBottom:1}}>{i+1}번째 신청 · {sel.selDate||""}</div>
+                        <div style={{fontWeight:700,fontSize:13}}>{sel.productName}</div>
+                        <div style={{fontSize:11,color:MUTED}}>코드: {sel.productCode}</div>
+                      </div>
+                      <span style={{fontSize:18,color:PC}}>✓</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 신청 가능한 제품 목록 */}
+              {canAddMore&&(<>
+                <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:10}}>
+                  {mySelections.length+1}번째 제품을 선택하세요
+                </div>
+                {availableProds.length===0
+                  ?<div style={{textAlign:"center",color:MUTED,padding:32,fontSize:13}}>선택 가능한 제품이 없습니다.</div>
+                  :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {availableProds.map(p=>{
+                      const alreadySelected=mySelections.some(s=>s.productId===p.id);
+                      return(<div key={p.id} onClick={()=>!alreadySelected&&handleSelectProduct(p)}
+                        style={{padding:"14px 16px",borderRadius:10,border:"2px solid "+(alreadySelected?"#CCC":BORDER),background:alreadySelected?"#F5F5F5":CARD,cursor:alreadySelected?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:alreadySelected?0.5:1}}>
+                        <div><div style={{fontWeight:700,fontSize:14}}>{p.name}</div><div style={{fontSize:12,color:MUTED,marginTop:2}}>코드: {p.code}</div></div>
+                        {alreadySelected
+                          ?<span style={{fontSize:11,color:MUTED,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>이미 신청됨</span>
+                          :<span style={{fontSize:11,color:PC,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight}}>신청하기</span>}
+                      </div>);
+                    })}
+                  </div>}
+              </>)}
+
+              {!canAddMore&&mySelections.length>0&&canSelectProduct&&(
+                <div style={{textAlign:"center",padding:"14px 0",fontSize:13,color:MUTED}}>
+                  이번 {isL?"차수":"기간"}의 최대 신청 건수({myQuota}건)를 모두 신청하셨습니다.
+                </div>
+              )}
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:PC}}>{selMsg}</div>}
             </div>
           </>)}
+
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
             {myAddress.address&&!addrEditMode?(
@@ -1017,7 +1159,6 @@ export default function App(){
             </>)}
           </div>
 
-          {/* 써포터즈 목록 + 검색 */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
             {bulkMode&&bulkSelected.size>0&&<div style={{fontSize:12,color:PC,fontWeight:700}}>{bulkSelected.size}명 선택</div>}
@@ -1122,6 +1263,7 @@ export default function App(){
               <OpenMonthList grade={prodGrade} refreshKey={openRefresh}/>
             </>)}
           </div>
+
           <div style={card}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>🛍️ 제품 등록</div>
             {prodGrade===G.L?(
@@ -1148,6 +1290,80 @@ export default function App(){
             </div>
             {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
           </div>
+
+          {/* ── 추가 신청 허용 설정 섹션 */}
+          <div style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={{fontWeight:700,fontSize:15}}>🎁 추가 신청 허용 설정</div>
+              <div style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:BRAND.primaryLight,color:PC,fontWeight:700}}>
+                기본: 라루피 {BASE_QUOTA[G.L]}건 · 시크릿 {BASE_QUOTA[G.S]}건
+              </div>
+            </div>
+            <div style={{fontSize:12,color:MUTED,marginBottom:14}}>
+              {prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 설정한 만큼 추가 신청 가능
+            </div>
+
+            {/* 회원 검색 후 추가 */}
+            <div style={{background:"#F9F6F2",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>회원 검색</div>
+              <div style={{position:"relative",marginBottom:8}}>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,pointerEvents:"none"}}>🔍</span>
+                <input style={{width:"100%",padding:"8px 10px 8px 32px",border:"1.5px solid "+(extraQuotaSearch?PC:BORDER),borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#fff",fontFamily:"inherit"}}
+                  placeholder="기수 또는 닉네임으로 검색" value={extraQuotaSearch} onChange={e=>setExtraQuotaSearch(e.target.value)}/>
+                {extraQuotaSearch&&<button onClick={()=>setExtraQuotaSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:MUTED,padding:0}}>×</button>}
+              </div>
+              {extraQuotaSearch.trim().length>=1&&(()=>{
+                const q=extraQuotaSearch.trim().toLowerCase();
+                const matches=supps.filter(s=>s.grade===prodGrade&&(s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q))).slice(0,6);
+                if(matches.length===0)return<div style={{fontSize:12,color:MUTED,textAlign:"center",padding:"8px 0"}}>검색 결과가 없습니다.</div>;
+                return matches.map(s=>{
+                  const existing=extraQuotaList.find(eq=>eq.suppId===s.id);
+                  const currentExtra=existing?.extraCount||0;
+                  const total=BASE_QUOTA[s.grade]+currentExtra;
+                  return(
+                    <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:currentExtra>0?"#E8F5E9":CARD,borderRadius:8,marginBottom:6,border:"1px solid "+(currentExtra>0?"#A5D6A7":BORDER)}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:13}}>{s.gen} · {s.nick}</div>
+                        <div style={{fontSize:11,color:MUTED}}>현재 {total}건 신청 가능 (기본 {BASE_QUOTA[s.grade]}+추가 {currentExtra})</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={()=>saveExtraQuota(s.id,Math.max(0,currentExtra-1))} style={{width:26,height:26,borderRadius:6,border:"1.5px solid "+BORDER,background:CARD,cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                        <span style={{fontWeight:800,fontSize:15,color:PC,minWidth:18,textAlign:"center"}}>+{currentExtra}</span>
+                        <button onClick={()=>saveExtraQuota(s.id,currentExtra+1)} style={{width:26,height:26,borderRadius:6,border:"1.5px solid "+PC,background:BRAND.primaryLight,cursor:"pointer",fontWeight:700,fontSize:15,color:PC,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* 현재 추가 허용된 회원 목록 */}
+            <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>
+              추가 허용된 회원 ({extraQuotaList.length}명)
+              <button onClick={loadExtraQuota} disabled={loadingEQ} style={{...btn("#EEE8E0",TEXT,true),marginLeft:8,fontSize:11}}>새로고침</button>
+            </div>
+            {loadingEQ&&<div style={{textAlign:"center",padding:12,color:MUTED,fontSize:12}}>불러오는 중...</div>}
+            {!loadingEQ&&extraQuotaList.length===0&&(
+              <div style={{textAlign:"center",padding:"10px 0",color:MUTED,fontSize:12}}>추가 허용된 회원이 없습니다.</div>
+            )}
+            {!loadingEQ&&extraQuotaList.map(eq=>(
+              <div key={eq.suppId} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#E8F5E9",borderRadius:8,marginBottom:6,border:"1px solid #A5D6A7"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{eq.suppName}</div>
+                  <div style={{fontSize:11,color:MUTED}}>
+                    기본 {BASE_QUOTA[eq.grade]||"-"}건 + 추가 {eq.extraCount}건 = 총 {(BASE_QUOTA[eq.grade]||0)+eq.extraCount}건
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>saveExtraQuota(eq.suppId,Math.max(0,eq.extraCount-1))} style={{width:26,height:26,borderRadius:6,border:"1.5px solid "+BORDER,background:CARD,cursor:"pointer",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{fontWeight:800,fontSize:15,color:PC,minWidth:18,textAlign:"center"}}>+{eq.extraCount}</span>
+                  <button onClick={()=>saveExtraQuota(eq.suppId,eq.extraCount+1)} style={{width:26,height:26,borderRadius:6,border:"1.5px solid "+PC,background:BRAND.primaryLight,cursor:"pointer",fontWeight:700,fontSize:15,color:PC,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            ))}
+            {extraQuotaMsg&&<div style={{fontSize:13,color:PC,marginTop:8,fontWeight:700}}>{extraQuotaMsg}</div>}
+          </div>
+
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
             {prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 제품 ({prodList.length}개)
           </div>

@@ -163,13 +163,11 @@ export default function App(){
   const[selYr,setSelYr]=useState(new Date().getFullYear());
   const[selMo,setSelMo]=useState(new Date().getMonth()+1);
   const[availableProds,setAvailableProds]=useState([]);
-  // ── 내 신청 목록 (복수)
   const[mySelections,setMySelections]=useState([]);
   const[selMsg,setSelMsg]=useState("");
   const[canSelectProduct,setCanSelectProduct]=useState(false);
   const[canSelectReason,setCanSelectReason]=useState("");
   const[selConfirmProd,setSelConfirmProd]=useState(null);
-  // ── 내 신청 가능 최대 건수
   const[myQuota,setMyQuota]=useState(BASE_QUOTA[G.L]);
   const[atab,setAtab]=useState("supporters");
   const[supps,setSupps]=useState([]);
@@ -218,22 +216,18 @@ export default function App(){
   const[suppSearch,setSuppSearch]=useState("");
   const[suppSearchGrade,setSuppSearchGrade]=useState("전체");
 
-  // ── 추가 신청 허용 관리자 UI 상태
-  const[extraQuotaList,setExtraQuotaList]=useState([]); // [{suppId, suppName, extraCount, grade, key}]
+  const[extraQuotaList,setExtraQuotaList]=useState([]);
   const[extraQuotaSearch,setExtraQuotaSearch]=useState("");
   const[extraQuotaMsg,setExtraQuotaMsg]=useState("");
   const[loadingEQ,setLoadingEQ]=useState(false);
 
-  // ── 추가 신청 허용 키 생성
   const extraQuotaKey = (grade, cha, year, month) =>
     grade===G.L ? "extraQuota:laroupi:cha:"+cha : "extraQuota:"+grade+":"+year+":"+month;
 
-  // ── 추가 신청 허용 목록 로드
   const loadExtraQuota = async () => {
     setLoadingEQ(true);
     const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
     const data = await db.get(key) || {};
-    // {suppId: extraCount} 형태 → 표시용 배열
     const list = Object.entries(data).map(([suppId, extraCount]) => {
       const supp = supps.find(s=>s.id===suppId);
       return { suppId, extraCount, suppName: supp ? supp.gen+" · "+supp.nick : suppId, grade: supp?.grade||"" };
@@ -242,7 +236,6 @@ export default function App(){
     setLoadingEQ(false);
   };
 
-  // ── 추가 신청 허용 저장
   const saveExtraQuota = async (suppId, extraCount) => {
     const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
     const data = await db.get(key) || {};
@@ -252,7 +245,6 @@ export default function App(){
     await loadExtraQuota();
   };
 
-  // ── 내 쿼터 로드 (서포터즈 화면용)
   const loadMyQuota = async () => {
     if(!me) return;
     const base = BASE_QUOTA[me.grade] || 1;
@@ -298,7 +290,6 @@ export default function App(){
     if(atab==="products"&&view==="admin"){loadAdminProds();loadExtraQuota();}
   },[atab,prodGrade,prodYear,prodMonth,prodCha]);
 
-  // prodCha/prodMonth 등 바뀔 때도 extraQuota 재로드
   useEffect(()=>{
     if(atab==="products"&&view==="admin"&&supps.length>0){loadExtraQuota();}
   },[prodGrade,prodCha,prodYear,prodMonth,supps.length]);
@@ -327,11 +318,9 @@ export default function App(){
     else setAvailableProds(await db.get("products:"+me.grade+":"+selYr+":"+selMo)||[]);
   };
 
-  // ── 내 신청 목록 로드 (복수 지원)
   const loadMySelections=async()=>{
     if(!me)return;
     if(me.grade===G.L){
-      // 라루피: selection:uid:cha:N:slot:M 형태로 저장 (슬롯별)
       const keys=await db.list("selection:"+me.id+":cha:"+selectedCha+":slot:");
       const list=await Promise.all(keys.map(k=>db.get(k)));
       setMySelections(list.filter(Boolean));
@@ -353,9 +342,6 @@ export default function App(){
   const loadCanSelect=async()=>{
     if(!me)return;
     if(me.grade===G.L){
-      // 이전 차수 활동 제출 여부 확인
-      const allSelKeys=await db.list("selection:"+me.id+":cha:");
-      // 현재 차수 이전의 차수들에서 마지막 제출된 활동 체크
       if(selectedCha===1){setCanSelectProduct(true);setCanSelectReason("");return;}
       const prevCha=selectedCha-1;
       const prevActKey="activity:"+me.id+":cha:"+prevCha;
@@ -432,15 +418,44 @@ export default function App(){
     setAct(saved||blankAct(me.grade));setSp("activity");
   };
 
+  // ────────────────────────────────────────────────
+  // ✅ 수정된 doSave 함수
+  //  - 임시저장(submit=false): 사진 검사 없이 즉시 저장
+  //  - 최종제출(submit=true) : 사진 누락 시 차단
+  //  - 라루피: "activity:uid:cha:N" 키로 저장 (기존 yr/mo 키 버그 수정)
+  //  - 라루피시크릿: "activity:uid:yr:mo" 키 유지
+  // ────────────────────────────────────────────────
   const doSave=async(submit=false)=>{
-    const missingIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
-    if(missingIdx!==-1){setSavMsg("⚠️ 바이럴 "+(missingIdx+1)+"번 사진이 없습니다.");setTimeout(()=>setSavMsg(""),3000);return;}
+    const isL=me.grade===G.L;
+
+    // 최종제출 시에만 사진 누락 검사
+    if(submit){
+      const missingIdx=act.virals.findIndex(v=>(v.link||v.photo)&&!v.photo);
+      if(missingIdx!==-1){
+        setSavMsg("⚠️ 바이럴 "+(missingIdx+1)+"번 사진이 없습니다.");
+        setTimeout(()=>setSavMsg(""),3000);
+        return;
+      }
+    }
+
     setSaving(true);
-    const data={...act,year:yr,month:mo,submitted:submit?true:(act.submitted||false)};
-    const ok=await db.set("activity:"+me.id+":"+yr+":"+mo,data);
+
+    const data={
+      ...act,
+      ...(isL ? {cha:selectedActCha} : {year:yr,month:mo}),
+      submitted: submit ? true : (act.submitted||false)
+    };
+
+    // 라루피: cha 기반 키 / 라루피시크릿: year:month 기반 키
+    const key=isL
+      ? "activity:"+me.id+":cha:"+selectedActCha
+      : "activity:"+me.id+":"+yr+":"+mo;
+
+    const ok=await db.set(key,data);
     if(ok){setAct(data);loadMySaved(me.id);}
     setSavMsg(ok?(submit?"✅ 최종 제출 완료!":"저장 완료! ✓"):"저장에 실패했습니다.");
-    setTimeout(()=>setSavMsg(""),3000);setSaving(false);
+    setTimeout(()=>setSavMsg(""),3000);
+    setSaving(false);
   };
 
   const saveAddress=async()=>{
@@ -460,12 +475,11 @@ export default function App(){
 
   const handleSelectProduct=prod=>{if(!canSelectProduct)return;setSelConfirmProd(prod);};
 
-  // ── 제품 신청 확정 (슬롯 기반 복수 저장)
   const confirmProductSelection=async()=>{
     const prod=selConfirmProd;if(!prod)return;
     const now=new Date();
     const dateStr=formatDate(now);
-    const slot=mySelections.length+1; // 다음 슬롯 번호
+    const slot=mySelections.length+1;
     let key, sel;
     if(me.grade===G.L){
       key="selection:"+me.id+":cha:"+selectedCha+":slot:"+slot;
@@ -654,7 +668,6 @@ export default function App(){
     await db.set("supporters",next);setSupps(next);setExcelPreview([]);setAmsg(added+"명 등록 완료!");setTimeout(()=>setAmsg(""),3000);
   };
 
-  // ── 활동내역 엑셀 (기존 유지)
   const downloadActivityExcel=async()=>{
     setDownloadingAct(true);const wb=XLSX.utils.book_new();
     const targetSupps=supps.filter(s=>actGrade==="전체"||s.grade===actGrade);
@@ -667,7 +680,6 @@ export default function App(){
       const[addr,d]=await Promise.all([db.get("address:"+s.id),db.get("activity:"+s.id+":"+actYear+":"+actMonth)]);
       const addrData=addr||{};
       if(!d)return;
-      // 신청 목록 (슬롯 기반)
       let selItems=[];
       if(s.grade===G.L){
         const slotKeys=await db.list("selection:"+s.id+":cha:");
@@ -695,7 +707,6 @@ export default function App(){
     setDownloadingAct(false);
   };
 
-  // ── 신청상품 취합 (날짜 포함, 복수 슬롯 지원)
   const downloadSelectionExcel=async()=>{
     setDownloadingSel(true);
     const wb=XLSX.utils.book_new();
@@ -706,10 +717,8 @@ export default function App(){
     const secretSupps=supps.filter(s=>s.grade===G.S);
 
     if(doLaroupi){
-      // 라루피: 슬롯 기반으로 조회
       const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","차수","슬롯","제품명","제품코드","신청날짜"]];
       await Promise.all(laroupiSupps.map(async s=>{
-        // 모든 차수의 슬롯 키 조회 후 selYear/selMonth로 필터
         const allKeys=await db.list("selection:"+s.id+":cha:");
         const allSels=(await Promise.all(allKeys.map(k=>db.get(k)))).filter(Boolean);
         const filtered=allSels.filter(sel=>sel.selYear===actYear&&sel.selMonth===actMonth);
@@ -724,7 +733,6 @@ export default function App(){
     }
 
     if(doSecret){
-      // 시크릿: 슬롯 기반으로 조회
       const rows=[["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","슬롯","제품명","제품코드","신청날짜"]];
       await Promise.all(secretSupps.map(async s=>{
         const slotKeys=await db.list("selection:"+s.id+":"+actYear+":"+actMonth+":slot:");
@@ -937,8 +945,6 @@ export default function App(){
 
           {sp==="product"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
-
-            {/* 신청 가능 여부 안내 */}
             {!canSelectProduct?(
               <div style={{padding:"12px 14px",background:"#FDECEA",borderRadius:10,marginBottom:14,fontSize:13,color:"#C0392B",fontWeight:600}}>
                 ⚠️ {canSelectReason}
@@ -956,7 +962,6 @@ export default function App(){
                 </div>
               )
             )}
-
             <div style={card}>
               {isL?(
                 <>
@@ -977,8 +982,6 @@ export default function App(){
                   <select value={selMo} onChange={e=>setSelMo(+e.target.value)} style={{...sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
                 </div>
               )}
-
-              {/* 신청된 제품 목록 */}
               {mySelections.length>0&&(
                 <div style={{marginBottom:16}}>
                   <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>신청된 제품</div>
@@ -994,8 +997,6 @@ export default function App(){
                   ))}
                 </div>
               )}
-
-              {/* 신청 가능한 제품 목록 */}
               {canAddMore&&(<>
                 <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:10}}>
                   {mySelections.length+1}번째 제품을 선택하세요
@@ -1015,7 +1016,6 @@ export default function App(){
                     })}
                   </div>}
               </>)}
-
               {!canAddMore&&mySelections.length>0&&canSelectProduct&&(
                 <div style={{textAlign:"center",padding:"14px 0",fontSize:13,color:MUTED}}>
                   이번 {isL?"차수":"기간"}의 최대 신청 건수({myQuota}건)를 모두 신청하셨습니다.
@@ -1291,7 +1291,7 @@ export default function App(){
             {prodMsg&&<div style={{fontSize:13,color:PC,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
           </div>
 
-          {/* ── 추가 신청 허용 설정 섹션 */}
+          {/* ── 추가 신청 허용 설정 */}
           <div style={card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={{fontWeight:700,fontSize:15}}>🎁 추가 신청 허용 설정</div>
@@ -1302,8 +1302,6 @@ export default function App(){
             <div style={{fontSize:12,color:MUTED,marginBottom:14}}>
               {prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 설정한 만큼 추가 신청 가능
             </div>
-
-            {/* 회원 검색 후 추가 */}
             <div style={{background:"#F9F6F2",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
               <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>회원 검색</div>
               <div style={{position:"relative",marginBottom:8}}>
@@ -1336,8 +1334,6 @@ export default function App(){
                 });
               })()}
             </div>
-
-            {/* 현재 추가 허용된 회원 목록 */}
             <div style={{fontSize:12,fontWeight:700,color:MUTED,marginBottom:8}}>
               추가 허용된 회원 ({extraQuotaList.length}명)
               <button onClick={loadExtraQuota} disabled={loadingEQ} style={{...btn("#EEE8E0",TEXT,true),marginLeft:8,fontSize:11}}>새로고침</button>

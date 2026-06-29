@@ -867,7 +867,7 @@ export default function App() {
         </div>
       ) : (
         <label style={{ display: "block", border: "1.5px dashed " + (required ? "#C0392B" : T.border), borderRadius: 8, padding: "10px 14px", textAlign: "center", cursor: "pointer", fontSize: 12, color: required ? "#C0392B" : T.muted, background: "#FAFAFA" }}>
-          {uploadingCount > 0 ? "⏳ 압축 중..." : "📷 사진 업로드" + (required ? " (필수 *)" : "")}
+         {uploadingCount > 0 ? "⏳ 압축 중..." : required ? "📷 사진 업로드 (필수 *)" : "📷 사진 업로드"}
           <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadPhoto(setter, e.target.files[0])} />
         </label>
       )}

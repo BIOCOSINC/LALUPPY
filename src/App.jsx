@@ -151,7 +151,6 @@ function EditMemberModal({ supp, onSave, onClose, existingSupps }) {
   const [ef, setEf] = useState({ gen: supp.gen, nick: supp.nick, phone: supp.phone });
   const [emsg, setEmsg] = useState("");
   const [saving, setSaving] = useState(false);
-  const [uploadingCount, setUploadingCount] = useState(0);
   const doSave = async () => {
     const { gen, nick, phone } = ef;
     if (!gen.trim() || !nick.trim() || !phone.trim()) { setEmsg("모든 항목을 입력해 주세요."); return; }

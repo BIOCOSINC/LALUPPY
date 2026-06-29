@@ -48,7 +48,7 @@ async function compressImage(file) {
     r.onload = e => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 600, q = 0.55;
+        const MAX = 300, q = 0.25;
         let w = img.width, h = img.height;
         if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
         const c = document.createElement("canvas"); c.width = w; c.height = h;
@@ -151,6 +151,7 @@ function EditMemberModal({ supp, onSave, onClose, existingSupps }) {
   const [ef, setEf] = useState({ gen: supp.gen, nick: supp.nick, phone: supp.phone });
   const [emsg, setEmsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const doSave = async () => {
     const { gen, nick, phone } = ef;
     if (!gen.trim() || !nick.trim() || !phone.trim()) { setEmsg("모든 항목을 입력해 주세요."); return; }
@@ -620,7 +621,16 @@ export default function App() {
   };
 
   // ── 활동 입력 헬퍼
-  const uploadPhoto = async (setter, file) => { if (!file) return; setter(await compressImage(file)); };
+ const uploadPhoto = async (setter, file) => {
+  if (!file) return;
+  setUploadingCount(c => c + 1);
+  try {
+    const compressed = await compressImage(file);
+    setter(compressed);
+  } finally {
+    setUploadingCount(c => c - 1);
+  }
+};
   const updBlog = (i, v) => setAct(a => ({ ...a, blogs: a.blogs.map((b, j) => j === i ? { link: v } : b) }));
   const addBlog = () => setAct(a => ({ ...a, blogs: [...a.blogs, { link: "" }] }));
   const delBlog = i => setAct(a => ({ ...a, blogs: a.blogs.filter((_, j) => j !== i) }));
@@ -847,7 +857,7 @@ export default function App() {
         </div>
       ) : (
         <label style={{ display: "block", border: "1.5px dashed " + (required ? "#C0392B" : T.border), borderRadius: 8, padding: "10px 14px", textAlign: "center", cursor: "pointer", fontSize: 12, color: required ? "#C0392B" : T.muted, background: "#FAFAFA" }}>
-          📷 사진 업로드{required ? " (필수 *)" : ""}
+          {uploadingCount > 0 ? "⏳ 압축 중..." : "📷 사진 업로드" + (required ? " (필수 *)" : "")}
           <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && uploadPhoto(setter, e.target.files[0])} />
         </label>
       )}
@@ -945,7 +955,11 @@ export default function App() {
             <button onClick={() => { setView("login"); setMe(null); setLf({ gen: "", nick: "", phone: "", code: "" }); sessionStorage.clear(); }} style={S.btn("#FDECEA", "#C0392B", true)}>로그아웃</button>
           </div>
         </div>
-
+{uploadingCount > 0 && (
+  <div style={{ background: "#FFF8E1", borderBottom: "1px solid #FFE082", padding: "8px 16px", textAlign: "center", fontSize: 13, color: "#B8860B", fontWeight: 700, position: "sticky", top: 57, zIndex: 99 }}>
+    ⏳ 사진 압축 중... ({uploadingCount}장) 완료 후 저장해 주세요.
+  </div>
+)}
         <div style={{ ...S.ctr, paddingTop: 20 }}>
           {/* 공지사항 */}
           {sp === "notices" && (<>

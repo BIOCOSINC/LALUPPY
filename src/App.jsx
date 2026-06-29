@@ -520,6 +520,11 @@ export default function App() {
   return;
 }
   const doSave = async (submit = false) => {
+    if (uploadingCount > 0) {
+  setSavMsg("⏳ 사진 압축 중입니다. 잠시 후 다시 시도해 주세요.");
+  setTimeout(() => setSavMsg(""), 3000);
+  return;
+}
     const isL = me.grade === G.L;
     if (submit) {
       const missingIdx = act.virals.findIndex(v => (v.link || v.photo) && !v.photo);

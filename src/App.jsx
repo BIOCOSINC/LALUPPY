@@ -236,6 +236,7 @@ export default function App() {
   const [act, setAct] = useState(null);
   const [savMsg, setSavMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [myInquiries, setMyInquiries] = useState([]);
   const [iqf, setIqf] = useState({ title: "", content: "" });
   const [iqMsg, setIqMsg] = useState("");
@@ -513,6 +514,11 @@ export default function App() {
   };
 
   // ── 활동 저장/제출
+  if (uploadingCount > 0) {
+  setSavMsg("⏳ 사진 압축 중입니다. 잠시 후 다시 시도해 주세요.");
+  setTimeout(() => setSavMsg(""), 3000);
+  return;
+}
   const doSave = async (submit = false) => {
     const isL = me.grade === G.L;
     if (submit) {
@@ -1071,10 +1077,10 @@ export default function App() {
               <button onClick={addExtra} style={{ ...S.btn(T.pcL, T.pc, true), width: "100%" }}>+ 기타 추가</button>
             </div>
             <div style={{ display: "flex", gap: 10, position: "sticky", bottom: 16 }}>
-              <button onClick={() => doSave(false)} disabled={saving} style={{ ...S.btn("#EEE8E0", T.text), flex: 1, opacity: saving ? 0.7 : 1 }}>💾 임시저장</button>
-              <button onClick={() => doSave(true)} disabled={saving || act.submitted}
+              <button onClick={() => doSave(false)} disabled={saving || uploadingCount > 0} style={{ ...S.btn("#EEE8E0", T.text), flex: 1, opacity: (saving || uploadingCount > 0) ? 0.5 : 1, cursor: uploadingCount > 0 ? "not-allowed" : "pointer" }}>{uploadingCount > 0 ? "⏳ 압축 중..." : "💾 임시저장"}</button>
+              <button onClick={() => doSave(true)} disabled={saving || act.submitted || uploadingCount > 0}
                 style={{ ...S.btn(act.submitted ? "#CCC" : T.pc), flex: 2, opacity: saving ? 0.7 : 1, cursor: act.submitted ? "not-allowed" : "pointer", boxShadow: act.submitted ? "none" : "0 4px 16px rgba(0,0,0,0.15)" }}>
-                {act.submitted ? "✅ 제출완료" : "✅ 최종 제출"}
+                {act.submitted ? "✅ 제출완료" : uploadingCount > 0 ? "⏳ 압축 중..." : "✅ 최종 제출"}
               </button>
             </div>
             {savMsg && <div style={{ textAlign: "center", marginTop: 8, fontSize: 13, fontWeight: 700, color: T.pc }}>{savMsg}</div>}

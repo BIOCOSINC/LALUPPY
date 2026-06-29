@@ -513,11 +513,7 @@ export default function App() {
   };
 
   // ── 활동 저장/제출
-  if (uploadingCount > 0) {
-  setSavMsg("⏳ 사진 압축 중입니다. 잠시 후 다시 시도해 주세요.");
-  setTimeout(() => setSavMsg(""), 3000);
-  return;
-}
+ 
   const doSave = async (submit = false) => {
     if (uploadingCount > 0) {
   setSavMsg("⏳ 사진 압축 중입니다. 잠시 후 다시 시도해 주세요.");

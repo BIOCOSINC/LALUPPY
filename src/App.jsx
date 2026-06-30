@@ -777,7 +777,7 @@ export default function App() {
   // ── 엑셀 다운로드 (활동내역)
   const downloadActivityExcel = async () => {
     setDownloadingAct(true); const wb = XLSX.utils.book_new();
-    const targetSupps = supps.filter(s => actGrade === "전체" || s.grade === actGrade);
+    const targetSupps = supps.filter(s => (actGen === "전체" || s.gen === actGen) && (actGrade === "전체" || s.grade === actGrade));
     const sum = [["기수", "닉네임", "등급", "수령인", "연락처", "우편번호", "주소", "년도", "월", "차수", "제품명", "제품코드", "제출여부", "총건수", "블로그", "바이럴", "기타"]];
     const blog = [["기수", "닉네임", "등급", "년도", "월", "순번", "링크"]];
     const viral = [["기수", "닉네임", "등급", "년도", "월", "순번", "링크", "사진등록"]];
@@ -811,7 +811,7 @@ export default function App() {
     [["활동요약", sum], ["블로그", blog], ["바이럴", viral], ["기타", extra]].forEach(([name, data]) => {
       const ws = XLSX.utils.aoa_to_sheet(data); ws["!cols"] = Array(data[0].length).fill({ wch: 14 }); XLSX.utils.book_append_sheet(wb, ws, name);
     });
-    XLSX.writeFile(wb, "LALUPPY_활동내역_" + actYear + "년" + actMonth + "월_" + (actGrade === "전체" ? "전체" : GN[actGrade]) + ".xlsx");
+    XLSX.writeFile(wb, "LALUPPY_활동내역_" + actYear + "년" + actMonth + "월_" + (actGen === "전체" ? "전체기수" : actGen) + "_" + (actGrade === "전체" ? "전체" : GN[actGrade]) + ".xlsx");
     setDownloadingAct(false);
   };
 
@@ -823,7 +823,7 @@ export default function App() {
     const doSecret = actGrade === "전체" || actGrade === G.S;
     if (doLaroupi) {
       const rows = [["기수", "닉네임", "등급", "수령인", "연락처", "우편번호", "주소", "차수", "슬롯", "제품명", "제품코드", "신청날짜"]];
-      await Promise.all(supps.filter(s => s.grade === G.L).map(async s => {
+      await Promise.all(supps.filter(s => s.grade === G.L && (actGen === "전체" || s.gen === actGen)).map(async s => {
         const allKeys = await db.list("selection:" + s.id + ":cha:");
         const allSels = (await Promise.all(allKeys.map(k => db.get(k)))).filter(Boolean);
         const filtered = allSels.filter(sel => sel.selYear === actYear && sel.selMonth === actMonth);
@@ -837,7 +837,7 @@ export default function App() {
     }
     if (doSecret) {
       const rows = [["기수", "닉네임", "등급", "수령인", "연락처", "우편번호", "주소", "년도", "월", "슬롯", "제품명", "제품코드", "신청날짜"]];
-      await Promise.all(supps.filter(s => s.grade === G.S).map(async s => {
+      await Promise.all(supps.filter(s => s.grade === G.S && (actGen === "전체" || s.gen === actGen)).map(async s => {
         const slotKeys = await db.list("selection:" + s.id + ":" + actYear + ":" + actMonth + ":slot:");
         const sels = (await Promise.all(slotKeys.map(k => db.get(k)))).filter(Boolean);
         if (!sels.length) return;
@@ -849,7 +849,7 @@ export default function App() {
       if (rows.length > 1) { const ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = Array(rows[0].length).fill({ wch: 14 }); XLSX.utils.book_append_sheet(wb, ws, "시크릿_" + actYear + "년" + actMonth + "월"); }
     }
     if (wb.SheetNames.length === 0) { const ws = XLSX.utils.aoa_to_sheet([["해당 월 신청된 제품이 없습니다."]]); XLSX.utils.book_append_sheet(wb, ws, "결과없음"); }
-    XLSX.writeFile(wb, "LALUPPY_신청상품취합_" + actYear + "년" + actMonth + "월_" + (actGrade === "전체" ? "전체" : GN[actGrade]) + ".xlsx");
+    XLSX.writeFile(wb, "LALUPPY_신청상품취합_" + actYear + "년" + actMonth + "월_" + (actGen === "전체" ? "전체기수" : actGen) + "_" + (actGrade === "전체" ? "전체" : GN[actGrade]) + ".xlsx");
     setDownloadingSel(false);
   };
 
@@ -1623,7 +1623,7 @@ export default function App() {
               <button onClick={() => loadActSummary(actYear)} style={S.btn("#EEE8E0", T.text, true)}>새로고침</button>
             </div>
             <div style={{ background: T.pcL, borderRadius: 10, padding: "10px 14px", marginBottom: 10, fontSize: 12, color: T.pc, fontWeight: 700 }}>
-              📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGrade === "전체" ? "전체 등급" : GN[actGrade]}
+              📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGen === "전체" ? "전체 기수" : actGen} · {actGrade === "전체" ? "전체 등급" : GN[actGrade]}
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <button onClick={downloadActivityExcel} disabled={downloadingAct || downloadingSel} style={{ ...S.btn(T.pc, undefined, true), padding: "8px 14px", flex: 1, opacity: downloadingAct ? 0.7 : 1 }}>{downloadingAct ? "생성 중..." : "📥 활동내역 엑셀"}</button>

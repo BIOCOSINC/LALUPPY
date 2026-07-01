@@ -1033,7 +1033,7 @@ const isMissionOpen = me.grade === G.L
               </div>
             ):(<>
               <div style={{background:T.missionL,border:"2px solid "+T.mission,borderRadius:14,padding:16,marginBottom:14}}>
-                <div style={{fontWeight:800,fontSize:15,color:T.mission,marginBottom:8}}>🧴 {missionSetting.prodName||"튼특크림"} 추가 미션</div>
+                <div style={{fontWeight:800,fontSize:15,color:T.mission,marginBottom:8}}>🧴 {missionSetting?.prodName||"튼특크림"} 추가 미션</div>
                 <div style={{fontSize:13,lineHeight:1.8,color:T.text}}>
                   ✅ 미션 완료 시 <strong>제품 1개 추가 신청 가능!</strong><br/>
                   📌 바이럴 {MISSION_VIRAL_COUNT}건 (링크 + 사진 필수)<br/>

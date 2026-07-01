@@ -294,7 +294,7 @@ export default function App() {
   const [prodGen, setProdGen] = useState("");
 
   // 튼특미션 설정 (관리자)
-  const [missionSettingL, setMissionSettingL] = useState({ deadline: "", prodName: "튼특크림" });
+  const [missionSettingL, setMissionSettingL] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
   const [missionSettingS, setMissionSettingS] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
   const [missionSettingMsg, setMissionSettingMsg] = useState("");
   const [missionSubTab, setMissionSubTab] = useState("all");
@@ -528,6 +528,16 @@ export default function App() {
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
 
+  // 튼특미션: 임시저장
+  const saveMissionDraft = async () => {
+    const cur = myMission || blankMission();
+    setMissionSaving(true);
+    const ok = await db.set(missionDataKey(me.grade, me.id), { ...cur, status: cur.status || null });
+    setMissionMsg(ok ? "💾 임시저장 완료! ✓" : "저장에 실패했습니다.");
+    setTimeout(() => setMissionMsg(""), 2500);
+    setMissionSaving(false);
+  };
+
   // 튼특미션: 써포터즈 제출
   const submitMission = async () => {
     const cur = myMission || blankMission();
@@ -559,6 +569,21 @@ export default function App() {
     setMyMission(m => {
       const base = m || blankMission();
       return { ...base, virals: base.virals.map((x, j) => j === i ? { ...x, [f]: v } : x) };
+    });
+  };
+
+  // 튼특미션 바이럴 삭제
+  const delMissionViral = i => {
+    setMyMission(m => {
+      const base = m || blankMission();
+      return { ...base, virals: base.virals.filter((_, j) => j !== i) };
+    });
+  };
+  // 튼특미션 바이럴 추가
+  const addMissionViral = () => {
+    setMyMission(m => {
+      const base = m || blankMission();
+      return { ...base, virals: [...base.virals, { link: "", photo: null }] };
     });
   };
 
@@ -971,11 +996,7 @@ export default function App() {
   if (view === "supporter" && me) {
     const isL = me.grade === G.L;
     const canAddMore = canSelectProduct && mySelections.length < myQuota;
-    // 라루피: 본인 기수에 오픈된 차수가 하나라도 있으면
-// 라루피시크릿: 현재 월이 접근 가능하면
-const isMissionOpen = me.grade === G.L
-  ? openChaList.length > 0
-  : isMonthAccessible(new Date().getFullYear(), new Date().getMonth() + 1);
+    const isMissionOpen = missionSetting && missionSetting.isOpen;
     const missionDeadline = missionSetting?.deadline || "";
     const isPastDeadline = missionDeadline && new Date() > new Date(missionDeadline);
     return (
@@ -1033,7 +1054,7 @@ const isMissionOpen = me.grade === G.L
               </div>
             ):(<>
               <div style={{background:T.missionL,border:"2px solid "+T.mission,borderRadius:14,padding:16,marginBottom:14}}>
-                <div style={{fontWeight:800,fontSize:15,color:T.mission,marginBottom:8}}>🧴 {missionSetting?.prodName||"튼특크림"} 추가 미션</div>
+                <div style={{fontWeight:800,fontSize:15,color:T.mission,marginBottom:8}}>🧴 {missionSetting.prodName||"튼특크림"} 추가 미션</div>
                 <div style={{fontSize:13,lineHeight:1.8,color:T.text}}>
                   ✅ 미션 완료 시 <strong>제품 1개 추가 신청 가능!</strong><br/>
                   📌 바이럴 {MISSION_VIRAL_COUNT}건 (링크 + 사진 필수)<br/>
@@ -1057,7 +1078,12 @@ const isMissionOpen = me.grade === G.L
                 <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📣 튼특 바이럴 ({MISSION_VIRAL_COUNT}건 필수)</div>
                 {(myMission||blankMission()).virals.map((v,i)=>(
                   <div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<MISSION_VIRAL_COUNT-1?"1px solid "+T.border:"none"}}>
-                    <label style={S.lbl}>바이럴 {i+1} <span style={{color:"#C0392B"}}>*</span></label>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <label style={S.lbl}>바이럴 {i+1} {i<MISSION_VIRAL_COUNT&&<span style={{color:"#C0392B"}}>*</span>}</label>
+                      {myMission?.status!=="approved"&&(
+                        <button onClick={()=>delMissionViral(i)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>
+                      )}
+                    </div>
                     <input
                       style={{...S.inp,background:myMission?.status==="approved"?"#F5F5F5":"#FAFAFA"}}
                       placeholder="링크 입력"
@@ -1072,14 +1098,20 @@ const isMissionOpen = me.grade === G.L
                   </div>
                 ))}
               </div>
-              {myMission?.status!=="approved"&&(
+              {myMission?.status!=="approved"&&(<>
+                <button
+                  onClick={saveMissionDraft}
+                  disabled={missionSaving}
+                  style={{...S.btn(T.missionL,T.mission),width:"100%",marginBottom:8,opacity:missionSaving?0.7:1}}>
+                  {missionSaving?"저장 중...":"💾 임시저장"}
+                </button>
                 <button
                   onClick={submitMission}
-                  disabled={missionSaving||myMission?.status==="submitted"}
-                  style={{...S.btn(myMission?.status==="submitted"?"#CCC":T.mission),width:"100%",opacity:missionSaving?0.7:1,cursor:myMission?.status==="submitted"?"not-allowed":"pointer"}}>
-                  {missionSaving?"제출 중...":myMission?.status==="submitted"?"⏳ 검토 중 (재제출 불가)":myMission?.status==="rejected"?"🔄 수정 후 재제출":"✅ 미션 제출"}
+                  disabled={missionSaving}
+                  style={{...S.btn(T.mission),width:"100%",opacity:missionSaving?0.7:1}}>
+                  {missionSaving?"제출 중...":myMission?.status==="submitted"?"🔄 재제출":myMission?.status==="rejected"?"🔄 수정 후 재제출":"✅ 미션 제출"}
                 </button>
-              )}
+              </>)}
               {myMission?.status==="approved"&&(
                 <div style={{padding:"14px",background:"#E8F5E9",borderRadius:10,textAlign:"center",fontWeight:700,color:"#2E7D32",fontSize:14}}>
                   ✅ 미션 승인 완료! 제품 추가 신청이 활성화되었습니다.
@@ -1160,7 +1192,7 @@ const isMissionOpen = me.grade === G.L
                 <div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.virals.length-1?"1px solid "+T.border:"none"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <label style={S.lbl}>바이럴 {i+1} {i<5&&<span style={{color:"#C0392B"}}>*</span>}</label>
-                    {i>=5&&<button onClick={()=>delViral(i)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>}
+                    <button onClick={()=>delViral(i)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>
                   </div>
                   <input style={S.inp} placeholder="링크 입력" value={v.link} onChange={e=>updViral(i,"link",e.target.value)} />
                   {photoField(v.photo,val=>updViral(i,"photo",val),true)}
@@ -1186,9 +1218,9 @@ const isMissionOpen = me.grade === G.L
             </div>
             <div style={{display:"flex",gap:10,position:"sticky",bottom:16}}>
               <button onClick={()=>doSave(false)} disabled={saving||uploadingCount>0} style={{...S.btn("#EEE8E0",T.text),flex:1,opacity:(saving||uploadingCount>0)?0.5:1}}>{uploadingCount>0?"⏳ 압축 중...":"💾 임시저장"}</button>
-              <button onClick={()=>doSave(true)} disabled={saving||act.submitted||uploadingCount>0}
-                style={{...S.btn(act.submitted?"#CCC":T.pc),flex:2,opacity:saving?0.7:1,cursor:act.submitted?"not-allowed":"pointer"}}>
-                {act.submitted?"✅ 제출완료":uploadingCount>0?"⏳ 압축 중...":"✅ 최종 제출"}
+              <button onClick={()=>doSave(true)} disabled={saving||uploadingCount>0}
+                style={{...S.btn(T.pc),flex:2,opacity:saving?0.7:1}}>
+                {uploadingCount>0?"⏳ 압축 중...":act.submitted?"🔄 재제출":"✅ 최종 제출"}
               </button>
             </div>
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{savMsg}</div>}

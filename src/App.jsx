@@ -1069,28 +1069,9 @@ const isMissionOpen = me.grade === G.L
                       ?v.photo&&<img src={v.photo} alt="" style={{maxWidth:180,maxHeight:140,borderRadius:8,border:"1px solid "+T.border,objectFit:"cover"}}/>
                       :photoField(v.photo, val=>updMissionViral(i,"photo",val), true)
                     }
-                     {myMission?.status !== "approved" && i >= MISSION_VIRAL_COUNT && (
-                      <button
-                        onClick={() => setMyMission(m => ({
-                          ...m, virals: m.virals.filter((_, j) => j !== i)
-                        }))}
-                        style={{ ...S.btn("#FDECEA", "#C0392B", true), marginTop: 6 }}>
-                        삭제
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
-              {myMission?.status !== "approved" && (
-                <button
-                  onClick={() => setMyMission(m => {
-                    const base = m || blankMission();
-                    return { ...base, virals: [...base.virals, { link: "", photo: null }] };
-                  })}
-                  style={{ ...S.btn(T.missionL, T.mission, true), width: "100%", marginTop: 4 }}>
-                  + 바이럴 추가
-                </button>
-              )}
               {myMission?.status!=="approved"&&(
                 <button
                   onClick={submitMission}

@@ -294,7 +294,7 @@ export default function App() {
   const [prodGen, setProdGen] = useState("");
 
   // 튼특미션 설정 (관리자)
-  const [missionSettingL, setMissionSettingL] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
+  const [missionSettingL, setMissionSettingL] = useState({ deadline: "", prodName: "튼특크림" });
   const [missionSettingS, setMissionSettingS] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
   const [missionSettingMsg, setMissionSettingMsg] = useState("");
   const [missionSubTab, setMissionSubTab] = useState("all");
@@ -971,7 +971,11 @@ export default function App() {
   if (view === "supporter" && me) {
     const isL = me.grade === G.L;
     const canAddMore = canSelectProduct && mySelections.length < myQuota;
-    const isMissionOpen = missionSetting && missionSetting.isOpen;
+    // 라루피: 본인 기수에 오픈된 차수가 하나라도 있으면
+// 라루피시크릿: 현재 월이 접근 가능하면
+const isMissionOpen = me.grade === G.L
+  ? openChaList.length > 0
+  : isMonthAccessible(new Date().getFullYear(), new Date().getMonth() + 1);
     const missionDeadline = missionSetting?.deadline || "";
     const isPastDeadline = missionDeadline && new Date() > new Date(missionDeadline);
     return (

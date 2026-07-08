@@ -4,7 +4,6 @@ import { initializeApp } from "firebase/app";
 import {
   getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs
 } from "firebase/firestore";
-
 const firebaseConfig = {
   apiKey: "AIzaSyCHsNhNwHAn_Oz0Kue9sVVQShA4euN22r4",
   authDomain: "laluppy-e69ff.firebaseapp.com",
@@ -19,9 +18,8 @@ const san = k => k.replace(/\//g, "__");
 const db = {
   get: async k => { try { const s = await getDoc(doc(fs, "kv", san(k))); return s.exists() ? JSON.parse(s.data().v) : null; } catch { return null; } },
   set: async (k, v) => { try { await setDoc(doc(fs, "kv", san(k)), { v: JSON.stringify(v), k }); return true; } catch { return false; } },
-  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "\uf8ff")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
+  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
 };
-
 const ADMIN_CODE = "LALUCELL2025";
 const G = { L: "laroupi", S: "laroupisecret" };
 const GN = { laroupi: "라루피", laroupisecret: "라루피시크릿" };
@@ -33,11 +31,10 @@ const LACHAS = [1, 2, 3, 4, 5, 6];
 const BRAND = { logoUrl: "/logo.png", logoText: "LALUPPY", primary: "#004638", primaryLight: "#E6F0ED" };
 const BASE_QUOTA = { laroupi: 2, laroupisecret: 1 };
 const MISSION_VIRAL_COUNT = 5;
-
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
 const missionSettingKey = grade => "mission:setting:" + grade;
 const missionDataKey = (grade, memberId) => "mission:" + grade + ":" + memberId;
-
+const dmKey = supporterId => "dm:" + supporterId;
 function formatDate(d) {
   return d.getFullYear() + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + String(d.getDate()).padStart(2, "0");
 }
@@ -67,7 +64,6 @@ function blankAct(grade) {
 function blankMission() {
   return { virals: Array(MISSION_VIRAL_COUNT).fill(0).map(() => ({ link: "", photo: null })), status: null, rejectedReason: "", submittedAt: null };
 }
-
 const T = {
   pc: "#004638", pcL: "#E6F0ED", bg: "#FAF8F5", card: "#fff",
   border: "#E8E0D5", text: "#2C2C2C", muted: "#888",
@@ -82,7 +78,6 @@ const S = {
   ctr: { maxWidth: 500, margin: "0 auto", padding: "0 16px" },
   sel: { border: "1px solid " + T.border, borderRadius: 8, padding: "6px 10px", fontSize: 13, fontWeight: 700, color: T.pc, background: T.pcL, cursor: "pointer", outline: "none" },
 };
-
 function MissionBadge({ status }) {
   if (!status) return null;
   const map = {
@@ -186,7 +181,66 @@ function RejectModal({ suppName, onConfirm, onClose }) {
     </div>
   );
 }
-
+function MissionTargetPicker({ grade, setting, setSetting, supps }) {
+  const [q, setQ] = useState("");
+  const targetIds = setting.targetIds || [];
+  const toggle = id => setSetting(s => {
+    const cur = s.targetIds || [];
+    const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
+    return { ...s, targetIds: next };
+  });
+  const selected = supps.filter(s => s.grade === grade && targetIds.includes(s.id));
+  const qq = q.trim().toLowerCase();
+  const matches = qq
+    ? supps.filter(s => s.grade === grade && !targetIds.includes(s.id) && (s.nick.toLowerCase().includes(qq) || s.gen.toLowerCase().includes(qq))).slice(0, 6)
+    : [];
+  return (
+    <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, marginBottom: 8 }}>선택된 회원 ({selected.length}명)</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {selected.length === 0 && <span style={{ fontSize: 12, color: "#BBB" }}>선택된 회원이 없습니다.</span>}
+        {selected.map(s => (
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: T.missionL, borderRadius: 20, fontSize: 12, border: "1px solid " + T.mission, color: T.mission }}>
+            {s.gen} · {s.nick}
+            <button onClick={() => toggle(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.mission, fontSize: 13, padding: 0, lineHeight: 1 }}>×</button>
+          </div>
+        ))}
+      </div>
+      <input style={{ ...S.inp, marginBottom: 6 }} placeholder="기수 또는 닉네임으로 검색해 추가" value={q} onChange={e => setQ(e.target.value)} />
+      {matches.map(s => (
+        <div key={s.id} onClick={() => toggle(s.id)} style={{ padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, background: "#fff", border: "1px solid " + T.border, marginBottom: 4 }}>
+          {s.gen} · {s.nick}
+        </div>
+      ))}
+      {qq && matches.length === 0 && <div style={{ fontSize: 12, color: T.muted, padding: "4px 0" }}>검색 결과가 없습니다.</div>}
+    </div>
+  );
+}
+function DmPopupModal({ thread, onReply, onClose, sending }) {
+  const [text, setText] = useState("");
+  const last = thread.messages[thread.messages.length - 1];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 380, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>📩 관리자 메시지</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: T.muted, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ background: T.pcL, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{thread.title}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{last.text}</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>{last.date}</div>
+        </div>
+        <label style={S.lbl}>답장하기</label>
+        <textarea style={{ ...S.inp, minHeight: 80, resize: "vertical" }} placeholder="답장을 입력해 주세요." value={text} onChange={e => setText(e.target.value)} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ ...S.btn("#EEE8E0", T.text), flex: 1 }}>닫기</button>
+          <button onClick={() => text.trim() && onReply(text.trim())} disabled={sending} style={{ ...S.btn(T.pc), flex: 2, opacity: sending ? 0.7 : 1 }}>{sending ? "전송 중..." : "✅ 답장 보내기"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 export default function App() {
   useEffect(() => {
     const s = document.createElement("script");
@@ -208,14 +262,12 @@ export default function App() {
       try { const { gen, nick, phone } = JSON.parse(savedId); setLf(f => ({ ...f, gen: gen || "", nick: nick || "", phone: phone || "" })); setSaveId(true); } catch {}
     }
   }, []);
-
   const [view, setView] = useState("login");
   const [adminMode, setAdminMode] = useState(false);
   const [lf, setLf] = useState({ gen: "", nick: "", phone: "", code: "" });
   const [saveId, setSaveId] = useState(false);
   const [lerr, setLerr] = useState("");
   const [me, setMe] = useState(null);
-
   const [sp, setSp] = useState("notices");
   const [myNotices, setMyNotices] = useState([]);
   const [savedMonths, setSavedMonths] = useState([]);
@@ -247,13 +299,16 @@ export default function App() {
   const [canSelectReason, setCanSelectReason] = useState("");
   const [selConfirmProd, setSelConfirmProd] = useState(null);
   const [myQuota, setMyQuota] = useState(BASE_QUOTA[G.L]);
-
   // 튼특미션 (써포터즈)
   const [myMission, setMyMission] = useState(null);
   const [missionSetting, setMissionSetting] = useState(null);
   const [missionSaving, setMissionSaving] = useState(false);
   const [missionMsg, setMissionMsg] = useState("");
-
+  // 관리자 메시지 (DM) - 써포터즈 측
+  const [myDms, setMyDms] = useState([]);
+  const [popupDm, setPopupDm] = useState(null);
+  const [dmReplyDrafts, setDmReplyDrafts] = useState({});
+  const [dmReplySendingId, setDmReplySendingId] = useState(null);
   const [atab, setAtab] = useState("supporters");
   const [supps, setSupps] = useState([]);
   const [nlp, setNlp] = useState([]);
@@ -292,10 +347,9 @@ export default function App() {
   const [newOpenMonth, setNewOpenMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2 });
   const [openRefresh, setOpenRefresh] = useState(0);
   const [prodGen, setProdGen] = useState("");
-
   // 튼특미션 설정 (관리자)
-  const [missionSettingL, setMissionSettingL] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
-  const [missionSettingS, setMissionSettingS] = useState({ isOpen: false, deadline: "", prodName: "튼특크림" });
+  const [missionSettingL, setMissionSettingL] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
+  const [missionSettingS, setMissionSettingS] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
   const [missionSettingMsg, setMissionSettingMsg] = useState("");
   const [missionSubTab, setMissionSubTab] = useState("all");
   const [allMissions, setAllMissions] = useState([]);
@@ -303,7 +357,18 @@ export default function App() {
   const [missionGradeFilter, setMissionGradeFilter] = useState("전체");
   const [rejectTarget, setRejectTarget] = useState(null);
   const [missionActionMsg, setMissionActionMsg] = useState("");
-
+  // 관리자 → 회원 메시지 (DM) - 관리자 측
+  const [iqSubTab, setIqSubTab] = useState("received");
+  const [dmSuppSearch, setDmSuppSearch] = useState("");
+  const [dmSuppTarget, setDmSuppTarget] = useState(null);
+  const [dmForm, setDmForm] = useState({ title: "", content: "" });
+  const [dmSendMsg, setDmSendMsg] = useState("");
+  const [dmSendSaving, setDmSendSaving] = useState(false);
+  const [allDmThreads, setAllDmThreads] = useState([]);
+  const [loadingDmThreads, setLoadingDmThreads] = useState(false);
+  const [selDmThread, setSelDmThread] = useState(null);
+  const [dmAdminReplyText, setDmAdminReplyText] = useState("");
+  const [dmAdminReplyMsg, setDmAdminReplyMsg] = useState("");
   const [excelPreview, setExcelPreview] = useState([]);
   const [excelErr, setExcelErr] = useState("");
   const [downloadingAct, setDownloadingAct] = useState(false);
@@ -316,10 +381,8 @@ export default function App() {
   const [extraQuotaList, setExtraQuotaList] = useState([]);
   const [extraQuotaSearch, setExtraQuotaSearch] = useState("");
   const [loadingEQ, setLoadingEQ] = useState(false);
-
   const extraQuotaKey = (grade, cha, year, month) =>
     grade === G.L ? "extraQuota:laroupi:cha:" + cha : "extraQuota:" + grade + ":" + year + ":" + month;
-
   const loadExtraQuota = async () => {
     setLoadingEQ(true);
     const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
@@ -348,18 +411,16 @@ export default function App() {
     const missionExtra = await db.get("extraQuota:mission:" + me.grade + ":" + me.id) || 0;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
   };
-
   useEffect(() => {
     if (view === "admin") {
       db.get("supporters").then(d => { const l = d || []; setSupps(l); loadActSummary(actYear, l); });
       Promise.all([db.get("notices:laroupi"), db.get("notices:laroupisecret")]).then(([lp, sc]) => { setNlp(lp || []); setNsc(sc || []); });
       Promise.all([db.get(missionSettingKey(G.L)), db.get(missionSettingKey(G.S))]).then(([ml, ms]) => {
-        if (ml) setMissionSettingL(ml);
-        if (ms) setMissionSettingS(ms);
+        if (ml) setMissionSettingL({ targetMode: "all", targetIds: [], ...ml });
+        if (ms) setMissionSettingS({ targetMode: "all", targetIds: [], ...ms });
       });
     }
   }, [view]);
-
   useEffect(() => {
     if (me) {
       Promise.all([
@@ -368,32 +429,44 @@ export default function App() {
         me.grade === G.L ? db.get(openChaKey(me.gen)) : db.get("openMonths:" + me.grade),
         db.get(missionSettingKey(me.grade)),
         db.get(missionDataKey(me.grade, me.id)),
-      ]).then(([notices, addr, openData, mSetting, mData]) => {
+        db.get(dmKey(me.id)),
+      ]).then(([notices, addr, openData, mSetting, mData, dmList]) => {
         setMyNotices(notices || []);
         if (addr) setMyAddress(addr);
         if (me.grade === G.L) setOpenChaList(openData || []);
         else setOpenMonthsList(openData || []);
-        setMissionSetting(mSetting || null);
+        setMissionSetting(mSetting ? { targetMode: "all", targetIds: [], ...mSetting } : null);
         setMyMission(mData || null);
+        const dms = dmList || [];
+        setMyDms(dms);
+        const unread = dms.find(d => d.messages && d.messages.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead);
+        if (unread) setPopupDm(unread);
       });
       loadMySaved(me.id);
       loadMyInquiries(me.id);
     }
   }, [me]);
-
   useEffect(() => {
     if (me && sp === "product") {
       Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota()]);
     }
   }, [me, sp, selectedCha, selYr, selMo]);
-
+  useEffect(() => {
+    if (sp === "inquiry" && me && myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead)) {
+      (async () => {
+        const dms = await db.get(dmKey(me.id)) || [];
+        const next = dms.map(d => (d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead) ? { ...d, supporterRead: true } : d);
+        await db.set(dmKey(me.id), next);
+        setMyDms(next);
+      })();
+    }
+  }, [sp]);
   useEffect(() => {
     if (atab === "products" && view === "admin") { loadAdminProds(); loadExtraQuota(); }
   }, [atab, prodGrade, prodYear, prodMonth, prodCha]);
   useEffect(() => {
     if (atab === "products" && view === "admin" && supps.length > 0) loadExtraQuota();
   }, [prodGrade, prodCha, prodYear, prodMonth, supps.length]);
-
   const loadMySaved = async uid => {
     if (me?.grade === G.L) {
       const keys = await db.list("activity:" + uid + ":cha:");
@@ -429,7 +502,6 @@ export default function App() {
   };
   useEffect(() => { if (me && me.grade === G.S && sp === "product") setMySelections([]); }, [selYr, selMo]);
   useEffect(() => { if (me && me.grade === G.L && sp === "product") setMySelections([]); }, [selectedCha]);
-
   const loadAdminProds = async () => {
     if (prodGrade === G.L) setProdList(await db.get("products:laroupi:cha:" + prodCha) || []);
     else setProdList(await db.get("products:" + prodGrade + ":" + prodYear + ":" + prodMonth) || []);
@@ -480,7 +552,6 @@ export default function App() {
     setActSummary(Object.fromEntries(entries));
     setLoadingSum(false);
   };
-
   // 튼특미션: 관리자 설정 저장
   const saveMissionSetting = async (grade) => {
     const setting = grade === G.L ? missionSettingL : missionSettingS;
@@ -488,7 +559,6 @@ export default function App() {
     setMissionSettingMsg(ok ? "✅ " + GN[grade] + " 미션 설정 저장 완료!" : "저장 실패");
     setTimeout(() => setMissionSettingMsg(""), 2500);
   };
-
   // 튼특미션: 전체 현황 로드 (관리자)
   const loadAllMissions = async () => {
     setLoadingMissions(true);
@@ -501,7 +571,6 @@ export default function App() {
     setAllMissions(results.filter(Boolean));
     setLoadingMissions(false);
   };
-
   // 튼특미션: 승인
   const approveMission = async (item) => {
     if (item.status === "approved") return;
@@ -512,7 +581,6 @@ export default function App() {
     setMissionActionMsg("✅ " + item.suppName + " 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
-
   // 튼특미션: 반려
   const rejectMission = async (item, reason) => {
     const supp = supps.find(s => s.id === item.suppId);
@@ -527,7 +595,6 @@ export default function App() {
     setMissionActionMsg("❌ " + item.suppName + " 반려 처리 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
-
   // 튼특미션: 임시저장
   const saveMissionDraft = async () => {
     const cur = myMission || blankMission();
@@ -537,7 +604,6 @@ export default function App() {
     setTimeout(() => setMissionMsg(""), 2500);
     setMissionSaving(false);
   };
-
   // 튼특미션: 써포터즈 제출
   const submitMission = async () => {
     const cur = myMission || blankMission();
@@ -564,14 +630,12 @@ export default function App() {
     setMissionSaving(false);
     setTimeout(() => setMissionMsg(""), 4000);
   };
-
   const updMissionViral = (i, f, v) => {
     setMyMission(m => {
       const base = m || blankMission();
       return { ...base, virals: base.virals.map((x, j) => j === i ? { ...x, [f]: v } : x) };
     });
   };
-
   // 튼특미션 바이럴 삭제
   const delMissionViral = i => {
     setMyMission(m => {
@@ -586,7 +650,38 @@ export default function App() {
       return { ...base, virals: [...base.virals, { link: "", photo: null }] };
     });
   };
-
+  // 관리자 메시지(DM) - 써포터즈 측 함수
+  const appendDmMessage = async (threadId, text) => {
+    const dms = await db.get(dmKey(me.id)) || [];
+    const now = Date.now();
+    const next = dms.map(d => d.id === threadId
+      ? { ...d, messages: [...d.messages, { from: "supporter", text, date: new Date().toLocaleString("ko-KR") }], supporterRead: true, adminRead: false, updatedAt: now }
+      : d);
+    const ok = await db.set(dmKey(me.id), next);
+    if (ok) setMyDms(next);
+    return ok ? next : dms;
+  };
+  const openNextUnreadDm = (dms) => {
+    const unread = dms.find(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead);
+    setPopupDm(unread || null);
+  };
+  const sendDmReply = async (threadId, text) => {
+    if (!text || !text.trim()) return;
+    setDmReplySendingId(threadId);
+    const next = await appendDmMessage(threadId, text.trim());
+    setDmReplyDrafts(prev => ({ ...prev, [threadId]: "" }));
+    setDmReplySendingId(null);
+    if (popupDm && popupDm.id === threadId) openNextUnreadDm(next);
+  };
+  const closeDmPopup = async () => {
+    if (!popupDm) return;
+    const dms = await db.get(dmKey(me.id)) || [];
+    const next = dms.map(d => d.id === popupDm.id ? { ...d, supporterRead: true } : d);
+    await db.set(dmKey(me.id), next);
+    setMyDms(next);
+    openNextUnreadDm(next);
+  };
+  const replyDmFromPopup = text => { if (popupDm) sendDmReply(popupDm.id, text); };
   const doLogin = async () => {
     if (adminMode) {
       if (lf.code === ADMIN_CODE) { setView("admin"); setLerr(""); sessionStorage.setItem("laluppy_view", "admin"); }
@@ -807,6 +902,67 @@ export default function App() {
     } else setReplyMsg("등록에 실패했습니다.");
     setTimeout(() => setReplyMsg(""), 2500);
   };
+  // 관리자 → 회원 메시지(DM) 함수
+  const loadAllDmThreads = async () => {
+    setLoadingDmThreads(true);
+    const list = await db.get("supporters") || [];
+    const allD = await Promise.all(list.map(s => db.get(dmKey(s.id)).then(dms => (dms || []).map(d => ({ ...d, suppId: s.id, suppName: s.gen + " · " + s.nick, grade: s.grade })))));
+    const result = allD.flat().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    setAllDmThreads(result);
+    setLoadingDmThreads(false);
+  };
+  const sendAdminDm = async () => {
+    if (!dmSuppTarget) { setDmSendMsg("보낼 회원을 선택해 주세요."); return; }
+    if (!dmForm.title.trim() || !dmForm.content.trim()) { setDmSendMsg("제목과 내용을 입력해 주세요."); return; }
+    setDmSendSaving(true);
+    const dms = await db.get(dmKey(dmSuppTarget.id)) || [];
+    const now = Date.now();
+    const thread = {
+      id: "dm" + now,
+      title: dmForm.title.trim(),
+      messages: [{ from: "admin", text: dmForm.content.trim(), date: new Date().toLocaleString("ko-KR") }],
+      supporterRead: false,
+      adminRead: true,
+      updatedAt: now,
+    };
+    const next = [thread, ...dms];
+    const ok = await db.set(dmKey(dmSuppTarget.id), next);
+    setDmSendSaving(false);
+    if (ok) {
+      setDmForm({ title: "", content: "" });
+      setDmSuppTarget(null);
+      setDmSendMsg("✅ " + thread.title + " 메시지를 전송했습니다!");
+      loadAllDmThreads();
+    } else setDmSendMsg("전송에 실패했습니다.");
+    setTimeout(() => setDmSendMsg(""), 2500);
+  };
+  const openDmThread = async d => {
+    setSelDmThread(d);
+    if (!d.adminRead) {
+      const dms = await db.get(dmKey(d.suppId)) || [];
+      const next = dms.map(x => x.id === d.id ? { ...x, adminRead: true } : x);
+      await db.set(dmKey(d.suppId), next);
+      setAllDmThreads(prev => prev.map(x => x.id === d.id ? { ...x, adminRead: true } : x));
+    }
+  };
+  const sendAdminDmReply = async () => {
+    if (!selDmThread || !dmAdminReplyText.trim()) { setDmAdminReplyMsg("답변 내용을 입력해 주세요."); return; }
+    const dms = await db.get(dmKey(selDmThread.suppId)) || [];
+    const now = Date.now();
+    const next = dms.map(d => d.id === selDmThread.id
+      ? { ...d, messages: [...d.messages, { from: "admin", text: dmAdminReplyText.trim(), date: new Date().toLocaleString("ko-KR") }], supporterRead: false, adminRead: true, updatedAt: now }
+      : d);
+    const ok = await db.set(dmKey(selDmThread.suppId), next);
+    if (ok) {
+      const updated = next.find(d => d.id === selDmThread.id);
+      const merged = { ...updated, suppId: selDmThread.suppId, suppName: selDmThread.suppName, grade: selDmThread.grade };
+      setSelDmThread(merged);
+      setAllDmThreads(prev => prev.map(d => d.id === selDmThread.id ? merged : d));
+      setDmAdminReplyText("");
+      setDmAdminReplyMsg("✅ 전송 완료!");
+    } else setDmAdminReplyMsg("전송에 실패했습니다.");
+    setTimeout(() => setDmAdminReplyMsg(""), 2000);
+  };
   const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([
@@ -908,7 +1064,6 @@ export default function App() {
     XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+actYear+"년"+actMonth+"월_"+(actGen==="전체"?"전체기수":actGen)+"_"+(actGrade==="전체"?"전체":GN[actGrade])+".xlsx");
     setDownloadingSel(false);
   };
-
   const photoField = (src, setter, required=false) => (
     <div style={{marginTop:6,marginBottom:4}}>
       {src ? (
@@ -924,7 +1079,6 @@ export default function App() {
       )}
     </div>
   );
-
   const ConfirmModal = () => {
     if (!selConfirmProd) return null;
     const isL = me?.grade === G.L;
@@ -952,7 +1106,6 @@ export default function App() {
       </div>
     );
   };
-
   // ── LOGIN
   if (view === "login") return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
@@ -991,17 +1144,19 @@ export default function App() {
       </div>
     </div>
   );
-
   // ── SUPPORTER
   if (view === "supporter" && me) {
     const isL = me.grade === G.L;
     const canAddMore = canSelectProduct && mySelections.length < myQuota;
-    const isMissionOpen = missionSetting && missionSetting.isOpen;
+    const missionTargeted = !missionSetting || missionSetting.targetMode !== "selected" || (missionSetting.targetIds || []).includes(me.id);
+    const isMissionOpen = missionSetting && missionSetting.isOpen && missionTargeted;
     const missionDeadline = missionSetting?.deadline || "";
     const isPastDeadline = missionDeadline && new Date() > new Date(missionDeadline);
+    const hasUnreadDm = myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead);
     return (
       <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
         <ConfirmModal />
+        {popupDm && <DmPopupModal thread={popupDm} onReply={replyDmFromPopup} onClose={closeDmPopup} sending={dmReplySendingId === popupDm.id} />}
         <div style={{background:T.card,borderBottom:"1px solid "+T.border,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
           <div><Logo /><div style={{fontSize:11,color:T.muted,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={S.tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -1011,6 +1166,7 @@ export default function App() {
                 {label}
                 {id==="mission"&&myMission?.status==="submitted"&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:4,background:"#E0B97A",display:"block"}}/>}
                 {id==="mission"&&myMission?.status==="rejected"&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:4,background:"#C0392B",display:"block"}}/>}
+                {id==="inquiry"&&hasUnreadDm&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:4,background:"#C0392B",display:"block"}}/>}
               </button>
             ))}
             <button onClick={()=>{setView("login");setMe(null);setLf({gen:"",nick:"",phone:"",code:""});sessionStorage.clear();}} style={S.btn("#FDECEA","#C0392B",true)}>로그아웃</button>
@@ -1038,7 +1194,6 @@ export default function App() {
               <button onClick={()=>setSp("months")} style={{...S.btn(T.pc),width:"100%"}}>📝 활동 내역 입력하기 →</button>
             </div>
           </>)}
-
           {sp==="mission"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🎯 튼특크림써포터즈 미션</div>
             {!isMissionOpen?(
@@ -1120,7 +1275,6 @@ export default function App() {
               {missionMsg&&<div style={{textAlign:"center",marginTop:10,fontSize:13,fontWeight:700,color:T.mission}}>{missionMsg}</div>}
             </>)}
           </>)}
-
           {sp==="months"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>{isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}</div>
             {isL?(
@@ -1163,7 +1317,6 @@ export default function App() {
               </div>
             )}
           </>)}
-
           {sp==="activity"&&act&&(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
               <button onClick={()=>setSp("months")} style={S.btn("#EEE8E0",T.text,true)}>← {isL?"차수":"월"} 선택</button>
@@ -1225,7 +1378,6 @@ export default function App() {
             </div>
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{savMsg}</div>}
           </>)}
-
           {sp==="product"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
             {myMission?.status==="approved"&&(
@@ -1308,7 +1460,6 @@ export default function App() {
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:T.pc}}>{selMsg}</div>}
             </div>
           </>)}
-
           {sp==="myinfo"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
             {myAddress.address&&!addrEditMode?(
@@ -1350,9 +1501,33 @@ export default function App() {
               </div>
             )}
           </>)}
-
           {sp==="inquiry"&&(<>
             <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>💬 관리자 문의</div>
+            {myDms.length>0&&(<>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📩 관리자 메시지 ({myDms.length}건)</div>
+              {myDms.slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(d=>{
+                const lastMsg=d.messages[d.messages.length-1];
+                const hasUnread=lastMsg?.from==="admin"&&!d.supporterRead;
+                return (
+                  <div key={d.id} style={{...S.card,borderLeft:"3px solid "+(hasUnread?"#C0392B":T.pc)}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{fontWeight:700,fontSize:14}}>{d.title}</div>
+                      {hasUnread&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:10,fontWeight:700,background:"#FDECEA",color:"#C0392B"}}>NEW</span>}
+                    </div>
+                    {d.messages.map((m,i)=>(
+                      <div key={i} style={{marginBottom:8,textAlign:m.from==="admin"?"left":"right"}}>
+                        <div style={{display:"inline-block",maxWidth:"85%",padding:"8px 12px",borderRadius:10,fontSize:13,background:m.from==="admin"?"#F9F6F2":T.pcL,whiteSpace:"pre-wrap",textAlign:"left"}}>{m.text}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:2}}>{m.from==="admin"?"관리자":"나"} · {m.date}</div>
+                      </div>
+                    ))}
+                    <div style={{display:"flex",gap:8,marginTop:10}}>
+                      <input style={{...S.inp,marginBottom:0,flex:1}} placeholder="답장 입력" value={dmReplyDrafts[d.id]||""} onChange={e=>setDmReplyDrafts(p=>({...p,[d.id]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&sendDmReply(d.id,dmReplyDrafts[d.id]||"")} />
+                      <button onClick={()=>sendDmReply(d.id,dmReplyDrafts[d.id]||"")} disabled={dmReplySendingId===d.id} style={S.btn(T.pc,undefined,true)}>전송</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>)}
             <div style={S.card}>
               <label style={S.lbl}>제목</label><input style={S.inp} placeholder="문의 제목" value={iqf.title} onChange={e=>setIqf(f=>({...f,title:e.target.value}))} />
               <label style={S.lbl}>내용</label><textarea style={{...S.inp,minHeight:100,resize:"vertical"}} placeholder="문의 내용" value={iqf.content} onChange={e=>setIqf(f=>({...f,content:e.target.value}))} />
@@ -1383,7 +1558,6 @@ export default function App() {
       </div>
     );
   }
-
   // ── ADMIN
   if (view === "admin") return (
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
@@ -1397,10 +1571,10 @@ export default function App() {
         {[["supporters","써포터즈"],["notices","공지사항"],["products","제품관리"],["activities","활동조회"],["missions","튼특미션"],["inquiries","문의관리"]].map(([id,tabName])=>(
           <button key={id} onClick={()=>{
             setAtab(id);
-            if(id==="inquiries"){setSelInquiry(null);loadAllInquiries();}
+            if(id==="inquiries"){setIqSubTab("received");setSelInquiry(null);setSelDmThread(null);loadAllInquiries();}
             if(id==="activities")setViewSupp(null);
             if(id==="products")loadAdminProds();
-            if(id==="missions"){loadAllMissions();Promise.all([db.get(missionSettingKey(G.L)),db.get(missionSettingKey(G.S))]).then(([ml,ms])=>{if(ml)setMissionSettingL(ml);if(ms)setMissionSettingS(ms);});}
+            if(id==="missions"){loadAllMissions();Promise.all([db.get(missionSettingKey(G.L)),db.get(missionSettingKey(G.S))]).then(([ml,ms])=>{if(ml)setMissionSettingL({targetMode:"all",targetIds:[],...ml});if(ms)setMissionSettingS({targetMode:"all",targetIds:[],...ms});});}
           }}
             style={{flex:1,minWidth:60,padding:"12px 6px",border:"none",background:"none",cursor:"pointer",fontWeight:700,fontSize:12,color:atab===id?T.pc:T.muted,borderBottom:"2px solid "+(atab===id?T.pc:"transparent"),whiteSpace:"nowrap"}}>
             {tabName}
@@ -1408,7 +1582,6 @@ export default function App() {
         ))}
       </div>
       <div style={{...S.ctr,paddingTop:20}}>
-
         {atab==="supporters"&&(<>
           <div style={S.card}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>➕ 써포터즈 등록</div>
@@ -1531,7 +1704,6 @@ export default function App() {
             });
           })()}
         </>)}
-
         {atab==="notices"&&(<>
           <div style={S.card}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>📢 공지사항 등록</div>
@@ -1560,7 +1732,6 @@ export default function App() {
             </div>
           ))}
         </>)}
-
         {atab==="products"&&(<>
           <div style={S.card}>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
@@ -1706,7 +1877,6 @@ export default function App() {
               </div>
             ))}
         </>)}
-
         {atab==="activities"&&(<>
           {!viewSupp?(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -1800,7 +1970,6 @@ export default function App() {
               ))}
           </>)}
         </>)}
-
         {atab==="missions"&&(<>
           <div style={{...S.card,border:"2px solid "+T.mission}}>
             <div style={{fontWeight:700,fontSize:15,color:T.mission,marginBottom:14}}>🎯 튼특미션 설정</div>
@@ -1825,6 +1994,18 @@ export default function App() {
                     <label style={S.lbl}>마감일</label>
                     <input type="date" style={{...S.inp,marginBottom:0}} value={setting.deadline||""} onChange={e=>setSetting(s=>({...s,deadline:e.target.value}))} />
                   </div>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={S.lbl}>공개 대상</label>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    {[["all","전체 공개"],["selected","선택 회원만"]].map(([val,tlabel])=>(
+                      <button key={val} onClick={()=>setSetting(s=>({...s,targetMode:val}))}
+                        style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+(setting.targetMode===val?T.mission:T.border),background:setting.targetMode===val?T.missionL:T.card,color:setting.targetMode===val?T.mission:T.muted,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                        {tlabel}
+                      </button>
+                    ))}
+                  </div>
+                  {setting.targetMode==="selected"&&<MissionTargetPicker grade={grade} setting={setting} setSetting={setSetting} supps={supps} />}
                 </div>
                 <button onClick={()=>saveMissionSetting(grade)} style={{...S.btn(T.mission,undefined,true),width:"100%",marginTop:8}}>
                   {GN[grade]} 설정 저장
@@ -1895,47 +2076,124 @@ export default function App() {
             ));
           })()}
         </>)}
-
         {atab==="inquiries"&&(<>
-          {!selInquiry?(<>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>
-              💬 전체 문의 ({allInquiries.length}건)
-              <button onClick={loadAllInquiries} style={{...S.btn("#EEE8E0",T.text,true),marginLeft:10}}>새로고침</button>
-            </div>
-            {loadingIq?<div style={{textAlign:"center",padding:40,color:T.muted}}>불러오는 중...</div>
-              :allInquiries.length===0?<div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>문의 내역이 없습니다.</div>
-              :allInquiries.map(iq=>(
-                <div key={iq.id} onClick={()=>{setSelInquiry(iq);setReplyText(iq.reply||"");}}
-                  style={{...S.card,cursor:"pointer",borderLeft:"3px solid "+(iq.reply?T.pc:"#E0B97A"),padding:"12px 16px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{iq.title}</div>
-                      <div style={{fontSize:12,color:T.muted}}>{iq.suppName}&nbsp;<span style={S.tag(iq.grade)}>{GN[iq.grade]}</span></div>
-                      <div style={{fontSize:11,color:T.muted,marginTop:4}}>{iq.date}</div>
+          <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:16}}>
+            {[["received","받은 문의"],["sent","보낸 메시지"]].map(([id,label])=>(
+              <button key={id} onClick={()=>{setIqSubTab(id);if(id==="sent"){setSelDmThread(null);loadAllDmThreads();}else{setSelInquiry(null);}}}
+                style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:iqSubTab===id?T.card:"transparent",color:iqSubTab===id?T.pc:T.muted,boxShadow:iqSubTab===id?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {iqSubTab==="received"&&(<>
+            {!selInquiry?(<>
+              <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>
+                💬 전체 문의 ({allInquiries.length}건)
+                <button onClick={loadAllInquiries} style={{...S.btn("#EEE8E0",T.text,true),marginLeft:10}}>새로고침</button>
+              </div>
+              {loadingIq?<div style={{textAlign:"center",padding:40,color:T.muted}}>불러오는 중...</div>
+                :allInquiries.length===0?<div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>문의 내역이 없습니다.</div>
+                :allInquiries.map(iq=>(
+                  <div key={iq.id} onClick={()=>{setSelInquiry(iq);setReplyText(iq.reply||"");}}
+                    style={{...S.card,cursor:"pointer",borderLeft:"3px solid "+(iq.reply?T.pc:"#E0B97A"),padding:"12px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{iq.title}</div>
+                        <div style={{fontSize:12,color:T.muted}}>{iq.suppName}&nbsp;<span style={S.tag(iq.grade)}>{GN[iq.grade]}</span></div>
+                        <div style={{fontSize:11,color:T.muted,marginTop:4}}>{iq.date}</div>
+                      </div>
+                      <span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:iq.reply?T.pcL:"#FEF6E4",color:iq.reply?T.pc:"#B7860B",whiteSpace:"nowrap"}}>{iq.reply?"답변완료":"미답변"}</span>
                     </div>
-                    <span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:iq.reply?T.pcL:"#FEF6E4",color:iq.reply?T.pc:"#B7860B",whiteSpace:"nowrap"}}>{iq.reply?"답변완료":"미답변"}</span>
                   </div>
+                ))}
+            </>):(<>
+              <button onClick={()=>{setSelInquiry(null);setReplyText("");setReplyMsg("");}} style={{...S.btn("#EEE8E0",T.text,true),marginBottom:14}}>← 목록</button>
+              <div style={S.card}>
+                <div style={{fontWeight:800,fontSize:15,marginBottom:6}}>{selInquiry.title}</div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:12}}>{selInquiry.suppName}&nbsp;<span style={S.tag(selInquiry.grade)}>{GN[selInquiry.grade]}</span>&nbsp;·&nbsp;{selInquiry.date}</div>
+                <div style={{fontSize:14,lineHeight:1.7,whiteSpace:"pre-wrap",padding:12,background:"#F9F6F2",borderRadius:8}}>{selInquiry.content}</div>
+              </div>
+              <div style={S.card}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>💬 관리자 답변</div>
+                <textarea style={{...S.inp,minHeight:100,resize:"vertical"}} value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder="답변 내용 입력"/>
+                <button onClick={sendReply} style={{...S.btn(T.pc),width:"100%"}}>답변 등록</button>
+                {replyMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{replyMsg}</div>}
+              </div>
+            </>)}
+          </>)}
+          {iqSubTab==="sent"&&(<>
+            <div style={S.card}>
+              <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>📩 회원에게 메시지 보내기</div>
+              <label style={S.lbl}>받는 회원</label>
+              {dmSuppTarget?(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:T.pcL,borderRadius:8,marginBottom:10}}>
+                  <span style={{fontWeight:700,fontSize:13,color:T.pc}}>{dmSuppTarget.gen} · {dmSuppTarget.nick}</span>
+                  <button onClick={()=>setDmSuppTarget(null)} style={S.btn("#EEE8E0",T.text,true)}>변경</button>
                 </div>
-              ))}
-          </>):(<>
-            <button onClick={()=>{setSelInquiry(null);setReplyText("");setReplyMsg("");}} style={{...S.btn("#EEE8E0",T.text,true),marginBottom:14}}>← 목록</button>
-            <div style={S.card}>
-              <div style={{fontWeight:800,fontSize:15,marginBottom:6}}>{selInquiry.title}</div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>{selInquiry.suppName}&nbsp;<span style={S.tag(selInquiry.grade)}>{GN[selInquiry.grade]}</span>&nbsp;·&nbsp;{selInquiry.date}</div>
-              <div style={{fontSize:14,lineHeight:1.7,whiteSpace:"pre-wrap",padding:12,background:"#F9F6F2",borderRadius:8}}>{selInquiry.content}</div>
+              ):(<>
+                <input style={S.inp} placeholder="기수 또는 닉네임으로 검색" value={dmSuppSearch} onChange={e=>setDmSuppSearch(e.target.value)} />
+                {dmSuppSearch.trim().length>=1&&(()=>{
+                  const q=dmSuppSearch.trim().toLowerCase();
+                  const matches=supps.filter(s=>s.nick.toLowerCase().includes(q)||s.gen.toLowerCase().includes(q)).slice(0,6);
+                  if(matches.length===0) return <div style={{fontSize:12,color:T.muted,padding:"6px 0"}}>검색 결과가 없습니다.</div>;
+                  return matches.map(s=>(
+                    <div key={s.id} onClick={()=>{setDmSuppTarget(s);setDmSuppSearch("");}} style={{padding:"8px 12px",borderRadius:8,cursor:"pointer",fontSize:13,border:"1px solid "+T.border,marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                      <span>{s.gen} · {s.nick}</span><span style={S.tag(s.grade)}>{GN[s.grade]}</span>
+                    </div>
+                  ));
+                })()}
+              </>)}
+              <label style={S.lbl}>제목</label><input style={S.inp} placeholder="메시지 제목" value={dmForm.title} onChange={e=>setDmForm(f=>({...f,title:e.target.value}))} />
+              <label style={S.lbl}>내용</label><textarea style={{...S.inp,minHeight:100,resize:"vertical"}} placeholder="메시지 내용" value={dmForm.content} onChange={e=>setDmForm(f=>({...f,content:e.target.value}))} />
+              <button onClick={sendAdminDm} disabled={dmSendSaving} style={{...S.btn(T.pc),width:"100%",opacity:dmSendSaving?0.7:1}}>{dmSendSaving?"전송 중...":"📨 메시지 전송 (로그인 시 팝업)"}</button>
+              {dmSendMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{dmSendMsg}</div>}
             </div>
-            <div style={S.card}>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>💬 관리자 답변</div>
-              <textarea style={{...S.inp,minHeight:100,resize:"vertical"}} value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder="답변 내용 입력"/>
-              <button onClick={sendReply} style={{...S.btn(T.pc),width:"100%"}}>답변 등록</button>
-              {replyMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{replyMsg}</div>}
+            <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
+              보낸 메시지 내역 ({allDmThreads.length}건)
+              <button onClick={loadAllDmThreads} style={{...S.btn("#EEE8E0",T.text,true),marginLeft:8}}>새로고침</button>
             </div>
+            {!selDmThread?(
+              loadingDmThreads?<div style={{textAlign:"center",padding:40,color:T.muted}}>불러오는 중...</div>
+              :allDmThreads.length===0?<div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>보낸 메시지가 없습니다.</div>
+              :allDmThreads.map(d=>{
+                const last=d.messages[d.messages.length-1];
+                const unread=last?.from==="supporter"&&!d.adminRead;
+                return (
+                  <div key={d.id} onClick={()=>openDmThread(d)} style={{...S.card,cursor:"pointer",borderLeft:"3px solid "+(unread?"#C0392B":T.pc),padding:"12px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{d.title}</div>
+                        <div style={{fontSize:12,color:T.muted}}>{d.suppName}&nbsp;<span style={S.tag(d.grade)}>{GN[d.grade]}</span></div>
+                        <div style={{fontSize:12,color:T.muted,marginTop:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{last?.from==="admin"?"나: ":"회원: "}{last?.text}</div>
+                      </div>
+                      {unread&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:"#FDECEA",color:"#C0392B",whiteSpace:"nowrap"}}>답장옴</span>}
+                    </div>
+                  </div>
+                );
+              })
+            ):(<>
+              <button onClick={()=>setSelDmThread(null)} style={{...S.btn("#EEE8E0",T.text,true),marginBottom:14}}>← 목록</button>
+              <div style={S.card}>
+                <div style={{fontWeight:800,fontSize:15,marginBottom:6}}>{selDmThread.title}</div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{selDmThread.suppName}&nbsp;<span style={S.tag(selDmThread.grade)}>{GN[selDmThread.grade]}</span></div>
+                {selDmThread.messages.map((m,i)=>(
+                  <div key={i} style={{marginBottom:10,textAlign:m.from==="admin"?"right":"left"}}>
+                    <div style={{display:"inline-block",maxWidth:"85%",padding:"9px 13px",borderRadius:10,fontSize:13,background:m.from==="admin"?T.pcL:"#F9F6F2",whiteSpace:"pre-wrap",textAlign:"left"}}>{m.text}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:2}}>{m.from==="admin"?"관리자":"회원"} · {m.date}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={S.card}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>💬 답장하기</div>
+                <textarea style={{...S.inp,minHeight:90,resize:"vertical"}} value={dmAdminReplyText} onChange={e=>setDmAdminReplyText(e.target.value)} placeholder="답장 내용 입력"/>
+                <button onClick={sendAdminDmReply} style={{...S.btn(T.pc),width:"100%"}}>전송</button>
+                {dmAdminReplyMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{dmAdminReplyMsg}</div>}
+              </div>
+            </>)}
           </>)}
         </>)}
-
       </div>
     </div>
   );
-
   return null;
 }

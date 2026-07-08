@@ -32,7 +32,7 @@ const BRAND = { logoUrl: "/logo.png", logoText: "LALUPPY", primary: "#004638", p
 const BASE_QUOTA = { laroupi: 2, laroupisecret: 1 };
 const MISSION_VIRAL_COUNT = 5;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
-const missionSettingKey = grade => "mission:setting:" + grade;
+const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId) => "mission:" + grade + ":" + memberId;
 const dmKey = supporterId => "dm:" + supporterId;
 function formatDate(d) {
@@ -181,7 +181,7 @@ function RejectModal({ suppName, onConfirm, onClose }) {
     </div>
   );
 }
-function MissionTargetPicker({ grade, setting, setSetting, supps }) {
+function MissionTargetPicker({ setting, setSetting, supps }) {
   const [q, setQ] = useState("");
   const targetIds = setting.targetIds || [];
   const toggle = id => setSetting(s => {
@@ -189,10 +189,10 @@ function MissionTargetPicker({ grade, setting, setSetting, supps }) {
     const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
     return { ...s, targetIds: next };
   });
-  const selected = supps.filter(s => s.grade === grade && targetIds.includes(s.id));
+  const selected = supps.filter(s => targetIds.includes(s.id));
   const qq = q.trim().toLowerCase();
   const matches = qq
-    ? supps.filter(s => s.grade === grade && !targetIds.includes(s.id) && (s.nick.toLowerCase().includes(qq) || s.gen.toLowerCase().includes(qq))).slice(0, 6)
+    ? supps.filter(s => !targetIds.includes(s.id) && (s.nick.toLowerCase().includes(qq) || s.gen.toLowerCase().includes(qq))).slice(0, 6)
     : [];
   return (
     <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
@@ -201,15 +201,15 @@ function MissionTargetPicker({ grade, setting, setSetting, supps }) {
         {selected.length === 0 && <span style={{ fontSize: 12, color: "#BBB" }}>선택된 회원이 없습니다.</span>}
         {selected.map(s => (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: T.missionL, borderRadius: 20, fontSize: 12, border: "1px solid " + T.mission, color: T.mission }}>
-            {s.gen} · {s.nick}
+            {s.gen} · {s.nick} <span style={{ opacity: 0.7 }}>({GN[s.grade]})</span>
             <button onClick={() => toggle(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.mission, fontSize: 13, padding: 0, lineHeight: 1 }}>×</button>
           </div>
         ))}
       </div>
-      <input style={{ ...S.inp, marginBottom: 6 }} placeholder="기수 또는 닉네임으로 검색해 추가" value={q} onChange={e => setQ(e.target.value)} />
+      <input style={{ ...S.inp, marginBottom: 6 }} placeholder="기수 또는 닉네임으로 검색해 추가 (전체 회원 대상)" value={q} onChange={e => setQ(e.target.value)} />
       {matches.map(s => (
-        <div key={s.id} onClick={() => toggle(s.id)} style={{ padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, background: "#fff", border: "1px solid " + T.border, marginBottom: 4 }}>
-          {s.gen} · {s.nick}
+        <div key={s.id} onClick={() => toggle(s.id)} style={{ padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, background: "#fff", border: "1px solid " + T.border, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+          <span>{s.gen} · {s.nick}</span><span style={S.tag(s.grade)}>{GN[s.grade]}</span>
         </div>
       ))}
       {qq && matches.length === 0 && <div style={{ fontSize: 12, color: T.muted, padding: "4px 0" }}>검색 결과가 없습니다.</div>}
@@ -347,9 +347,10 @@ export default function App() {
   const [newOpenMonth, setNewOpenMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2 });
   const [openRefresh, setOpenRefresh] = useState(0);
   const [prodGen, setProdGen] = useState("");
-  // 튼특미션 설정 (관리자)
-  const [missionSettingL, setMissionSettingL] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
-  const [missionSettingS, setMissionSettingS] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
+  // 튼특미션 설정 (관리자) - 라루피/시크릿 공통(통합)
+  const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
+  const [missionExcelPreview, setMissionExcelPreview] = useState([]);
+  const [missionExcelErr, setMissionExcelErr] = useState("");
   const [missionSettingMsg, setMissionSettingMsg] = useState("");
   const [missionSubTab, setMissionSubTab] = useState("all");
   const [allMissions, setAllMissions] = useState([]);
@@ -415,9 +416,8 @@ export default function App() {
     if (view === "admin") {
       db.get("supporters").then(d => { const l = d || []; setSupps(l); loadActSummary(actYear, l); });
       Promise.all([db.get("notices:laroupi"), db.get("notices:laroupisecret")]).then(([lp, sc]) => { setNlp(lp || []); setNsc(sc || []); });
-      Promise.all([db.get(missionSettingKey(G.L)), db.get(missionSettingKey(G.S))]).then(([ml, ms]) => {
-        if (ml) setMissionSettingL({ targetMode: "all", targetIds: [], ...ml });
-        if (ms) setMissionSettingS({ targetMode: "all", targetIds: [], ...ms });
+      db.get(missionSettingKey()).then(ms => {
+        if (ms) setMissionSettingForm({ targetMode: "all", targetIds: [], ...ms });
       });
     }
   }, [view]);
@@ -553,11 +553,43 @@ export default function App() {
     setLoadingSum(false);
   };
   // 튼특미션: 관리자 설정 저장
-  const saveMissionSetting = async (grade) => {
-    const setting = grade === G.L ? missionSettingL : missionSettingS;
-    const ok = await db.set(missionSettingKey(grade), setting);
-    setMissionSettingMsg(ok ? "✅ " + GN[grade] + " 미션 설정 저장 완료!" : "저장 실패");
+  const saveMissionSetting = async () => {
+    const ok = await db.set(missionSettingKey(), missionSettingForm);
+    setMissionSettingMsg(ok ? "✅ 미션 설정 저장 완료!" : "저장 실패");
     setTimeout(() => setMissionSettingMsg(""), 2500);
+  };
+  // 튼특미션 대상자: 엑셀 양식 다운로드
+  const downloadMissionTargetTemplate = () => {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([["기수", "닉네임"], ["1기", "예시닉네임"]]);
+    ws["!cols"] = [{ wch: 8 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws, "미션대상자");
+    XLSX.writeFile(wb, "튼특미션_대상자_양식.xlsx");
+  };
+  // 튼특미션 대상자: 엑셀 업로드로 회원 매칭
+  const handleMissionExcelUpload = async file => {
+    setMissionExcelErr(""); setMissionExcelPreview([]);
+    try {
+      const ab = await file.arrayBuffer(); const wb = XLSX.read(ab, { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const parsed = rows.slice(1).filter(r => r[0] || r[1]).map(r => {
+        const gen = String(r[0] || "").trim(), nick = String(r[1] || "").trim();
+        const found = supps.find(s => s.gen === gen && s.nick === nick);
+        return { gen, nick, suppId: found ? found.id : null, grade: found ? found.grade : null };
+      });
+      if (!parsed.length) { setMissionExcelErr("유효한 데이터가 없습니다."); return; }
+      setMissionExcelPreview(parsed);
+    } catch { setMissionExcelErr("파일을 읽을 수 없습니다."); }
+  };
+  // 튼특미션 대상자: 엑셀 매칭 결과를 targetIds에 반영
+  const applyMissionExcelTargets = () => {
+    const matchedIds = missionExcelPreview.filter(p => p.suppId).map(p => p.suppId);
+    setMissionSettingForm(s => {
+      const cur = new Set(s.targetIds || []);
+      matchedIds.forEach(id => cur.add(id));
+      return { ...s, targetIds: [...cur] };
+    });
+    setMissionExcelPreview([]);
   };
   // 튼특미션: 전체 현황 로드 (관리자)
   const loadAllMissions = async () => {
@@ -1574,7 +1606,7 @@ export default function App() {
             if(id==="inquiries"){setIqSubTab("received");setSelInquiry(null);setSelDmThread(null);loadAllInquiries();}
             if(id==="activities")setViewSupp(null);
             if(id==="products")loadAdminProds();
-            if(id==="missions"){loadAllMissions();Promise.all([db.get(missionSettingKey(G.L)),db.get(missionSettingKey(G.S))]).then(([ml,ms])=>{if(ml)setMissionSettingL({targetMode:"all",targetIds:[],...ml});if(ms)setMissionSettingS({targetMode:"all",targetIds:[],...ms});});}
+            if(id==="missions"){loadAllMissions();db.get(missionSettingKey()).then(ms=>{if(ms)setMissionSettingForm({targetMode:"all",targetIds:[],...ms});});}
           }}
             style={{flex:1,minWidth:60,padding:"12px 6px",border:"none",background:"none",cursor:"pointer",fontWeight:700,fontSize:12,color:atab===id?T.pc:T.muted,borderBottom:"2px solid "+(atab===id?T.pc:"transparent"),whiteSpace:"nowrap"}}>
             {tabName}
@@ -1972,46 +2004,69 @@ export default function App() {
         </>)}
         {atab==="missions"&&(<>
           <div style={{...S.card,border:"2px solid "+T.mission}}>
-            <div style={{fontWeight:700,fontSize:15,color:T.mission,marginBottom:14}}>🎯 튼특미션 설정</div>
-            {[[G.L,missionSettingL,setMissionSettingL],[G.S,missionSettingS,setMissionSettingS]].map(([grade,setting,setSetting])=>(
-              <div key={grade} style={{marginBottom:18,paddingBottom:18,borderBottom:grade===G.L?"1px solid "+T.border:"none"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                  <span style={S.tag(grade)}>{GN[grade]}</span>
-                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
-                    <div onClick={()=>setSetting(s=>({...s,isOpen:!s.isOpen}))}
-                      style={{width:36,height:20,borderRadius:10,background:setting.isOpen?T.mission:"#CCC",position:"relative",transition:"all 0.2s",cursor:"pointer"}}>
-                      <div style={{width:16,height:16,borderRadius:8,background:"#fff",position:"absolute",top:2,left:setting.isOpen?18:2,transition:"all 0.2s"}}/>
-                    </div>
-                    <span style={{fontSize:13,fontWeight:700,color:setting.isOpen?T.mission:T.muted}}>{setting.isOpen?"미션 오픈":"미션 클로즈"}</span>
-                  </label>
+            <div style={{fontWeight:700,fontSize:15,color:T.mission,marginBottom:14}}>🎯 튼특미션 설정 <span style={{fontWeight:400,fontSize:12,color:T.muted}}>(라루피·라루피시크릿 공통)</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                <div onClick={()=>setMissionSettingForm(s=>({...s,isOpen:!s.isOpen}))}
+                  style={{width:36,height:20,borderRadius:10,background:missionSettingForm.isOpen?T.mission:"#CCC",position:"relative",transition:"all 0.2s",cursor:"pointer"}}>
+                  <div style={{width:16,height:16,borderRadius:8,background:"#fff",position:"absolute",top:2,left:missionSettingForm.isOpen?18:2,transition:"all 0.2s"}}/>
                 </div>
-                <div style={{display:"flex",gap:8,marginBottom:8}}>
-                  <div style={{flex:1}}>
-                    <label style={S.lbl}>미션 제품명</label>
-                    <input style={{...S.inp,marginBottom:0}} placeholder="예: 튼특크림" value={setting.prodName||""} onChange={e=>setSetting(s=>({...s,prodName:e.target.value}))} />
-                  </div>
-                  <div style={{flex:1}}>
-                    <label style={S.lbl}>마감일</label>
-                    <input type="date" style={{...S.inp,marginBottom:0}} value={setting.deadline||""} onChange={e=>setSetting(s=>({...s,deadline:e.target.value}))} />
-                  </div>
-                </div>
-                <div style={{marginBottom:8}}>
-                  <label style={S.lbl}>공개 대상</label>
-                  <div style={{display:"flex",gap:8,marginBottom:8}}>
-                    {[["all","전체 공개"],["selected","선택 회원만"]].map(([val,tlabel])=>(
-                      <button key={val} onClick={()=>setSetting(s=>({...s,targetMode:val}))}
-                        style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+(setting.targetMode===val?T.mission:T.border),background:setting.targetMode===val?T.missionL:T.card,color:setting.targetMode===val?T.mission:T.muted,fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                        {tlabel}
-                      </button>
-                    ))}
-                  </div>
-                  {setting.targetMode==="selected"&&<MissionTargetPicker grade={grade} setting={setting} setSetting={setSetting} supps={supps} />}
-                </div>
-                <button onClick={()=>saveMissionSetting(grade)} style={{...S.btn(T.mission,undefined,true),width:"100%",marginTop:8}}>
-                  {GN[grade]} 설정 저장
-                </button>
+                <span style={{fontSize:13,fontWeight:700,color:missionSettingForm.isOpen?T.mission:T.muted}}>{missionSettingForm.isOpen?"미션 오픈":"미션 클로즈"}</span>
+              </label>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <div style={{flex:1}}>
+                <label style={S.lbl}>미션 제품명</label>
+                <input style={{...S.inp,marginBottom:0}} placeholder="예: 튼특크림" value={missionSettingForm.prodName||""} onChange={e=>setMissionSettingForm(s=>({...s,prodName:e.target.value}))} />
               </div>
-            ))}
+              <div style={{flex:1}}>
+                <label style={S.lbl}>마감일</label>
+                <input type="date" style={{...S.inp,marginBottom:0}} value={missionSettingForm.deadline||""} onChange={e=>setMissionSettingForm(s=>({...s,deadline:e.target.value}))} />
+              </div>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={S.lbl}>공개 대상</label>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                {[["all","전체 공개"],["selected","선택 회원만"]].map(([val,tlabel])=>(
+                  <button key={val} onClick={()=>setMissionSettingForm(s=>({...s,targetMode:val}))}
+                    style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+(missionSettingForm.targetMode===val?T.mission:T.border),background:missionSettingForm.targetMode===val?T.missionL:T.card,color:missionSettingForm.targetMode===val?T.mission:T.muted,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    {tlabel}
+                  </button>
+                ))}
+              </div>
+              {missionSettingForm.targetMode==="selected"&&(<>
+                <MissionTargetPicker setting={missionSettingForm} setSetting={setMissionSettingForm} supps={supps} />
+                <div style={{background:"#FAFAFA",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.muted}}>📊 엑셀로 대상자 일괄 추가</div>
+                    <button onClick={downloadMissionTargetTemplate} style={S.btn(T.missionL,T.mission,true)}>📥 양식</button>
+                  </div>
+                  <label style={{display:"block",border:"1.5px dashed "+T.border,borderRadius:8,padding:"10px",textAlign:"center",cursor:"pointer",fontSize:12,color:T.muted,background:"#fff",marginBottom:8}}>
+                    📂 엑셀 파일 선택 (기수, 닉네임 컬럼)
+                    <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleMissionExcelUpload(e.target.files[0])} />
+                  </label>
+                  {missionExcelErr&&<div style={{color:"#C0392B",fontSize:12,marginBottom:8}}>{missionExcelErr}</div>}
+                  {missionExcelPreview.length>0&&(<>
+                    <div style={{maxHeight:140,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,marginBottom:8}}>
+                      {missionExcelPreview.map((p,i)=>(
+                        <div key={i} style={{padding:"6px 10px",borderBottom:"1px solid "+T.border,fontSize:12,display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{color:T.muted}}>{i+1}</span>
+                          <span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span>
+                          {p.suppId?<span style={{color:T.mission,fontSize:11}}>✔ 매칭됨{p.grade?" ("+GN[p.grade]+")":""}</span>:<span style={{color:"#C0392B",fontSize:11}}>✕ 회원 없음</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={applyMissionExcelTargets} style={{...S.btn(T.mission),flex:1}}>✅ {missionExcelPreview.filter(p=>p.suppId).length}명 추가</button>
+                      <button onClick={()=>setMissionExcelPreview([])} style={S.btn("#EEE8E0",T.text)}>취소</button>
+                    </div>
+                  </>)}
+                </div>
+              </>)}
+            </div>
+            <button onClick={saveMissionSetting} style={{...S.btn(T.mission,undefined,true),width:"100%",marginTop:8}}>
+              미션 설정 저장
+            </button>
             {missionSettingMsg&&<div style={{textAlign:"center",fontSize:13,fontWeight:700,color:T.mission,marginTop:8}}>{missionSettingMsg}</div>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>

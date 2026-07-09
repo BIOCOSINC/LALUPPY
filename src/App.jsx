@@ -571,15 +571,22 @@ export default function App() {
     setMissionExcelErr(""); setMissionExcelPreview([]);
     try {
       const ab = await file.arrayBuffer(); const wb = XLSX.read(ab, { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      const parsed = rows.slice(1).filter(r => r[0] || r[1]).map(r => {
-        const gen = String(r[0] || "").trim(), nick = String(r[1] || "").trim();
-        const found = supps.find(s => s.gen === gen && s.nick === nick);
-        return { gen, nick, suppId: found ? found.id : null, grade: found ? found.grade : null };
-      });
-      if (!parsed.length) { setMissionExcelErr("유효한 데이터가 없습니다."); return; }
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+      if (!rows.length) { setMissionExcelErr("시트에서 데이터를 찾지 못했습니다. (빈 파일이거나 첫 시트가 비어있습니다)"); return; }
+      const parsed = rows
+        .map(r => ({ gen: String(r[0] ?? "").trim(), nick: String(r[1] ?? "").trim() }))
+        // 헤더 행("기수"/"닉네임" 텍스트 그대로인 행)과 완전히 빈 행은 제외
+        .filter(r => r.gen && r.nick && r.gen !== "기수" && r.nick !== "닉네임")
+        .map(r => {
+          const found = supps.find(s => s.gen === r.gen && s.nick === r.nick);
+          return { ...r, suppId: found ? found.id : null, grade: found ? found.grade : null };
+        });
+      if (!parsed.length) {
+        setMissionExcelErr("유효한 데이터가 없습니다. 엑셀의 A열=기수, B열=닉네임 형식인지 확인해 주세요. (읽은 행 수: " + rows.length + ")");
+        return;
+      }
       setMissionExcelPreview(parsed);
-    } catch { setMissionExcelErr("파일을 읽을 수 없습니다."); }
+    } catch (e) { setMissionExcelErr("파일을 읽을 수 없습니다. (" + (e?.message || "알 수 없는 오류") + ")"); }
   };
   // 튼특미션 대상자: 엑셀 매칭 결과를 targetIds에 반영
   const applyMissionExcelTargets = () => {

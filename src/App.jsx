@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import {
+  Megaphone, Target, PenLine, ShoppingBag, Package, MessageCircle, Rss, Pin, Plus, UserPlus,
+  FileSpreadsheet, Users, Gift, ClipboardList, Send, Pencil, CheckCircle2, XCircle, Clock,
+  Lock, Unlock, Search, Save, Camera, RotateCw, User, Phone, ShieldCheck, Check, Smartphone,
+  Download, Upload, LogOut, X, Trash2, ChevronLeft, ArrowRight, Bell,
+} from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
   getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs
@@ -23,14 +29,20 @@ const db = {
 const ADMIN_CODE = "LALUCELL2025";
 const G = { L: "laroupi", S: "laroupisecret" };
 const GN = { laroupi: "라루피", laroupisecret: "라루피시크릿" };
-const GC = { laroupi: "#004638", laroupisecret: "#2A6B55" };
-const GB = { laroupi: "#E6F0ED", laroupisecret: "#D6EBE3" };
+// Figma "Simple Design System" — Brand color primitives (라루셀 그린 10단계)
+const BRAND_SCALE = {
+  100: "#F2F6F5", 200: "#D9E3E1", 300: "#B3C8C3", 400: "#80A39C", 500: "#4D7E74",
+  600: "#266256", 700: "#0D4F42", 800: "#004638", 900: "#00382D", 1000: "#002A22",
+};
+const GC = { laroupi: BRAND_SCALE[800], laroupisecret: BRAND_SCALE[600] };
+const GB = { laroupi: BRAND_SCALE[200], laroupisecret: BRAND_SCALE[300] };
 const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const LACHAS = [1, 2, 3, 4, 5, 6];
-const BRAND = { logoUrl: "/logo.png", logoText: "LALUPPY", primary: "#004638", primaryLight: "#E6F0ED" };
+const BRAND = { logoUrl: "/logo.png", logoText: "LALUPPY", primary: BRAND_SCALE[800], primaryLight: BRAND_SCALE[200] };
 const BASE_QUOTA = { laroupi: 2, laroupisecret: 1 };
 const MISSION_VIRAL_COUNT = 5;
+const MISSION_VIRAL_MAX = 100;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
 const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId) => "mission:" + grade + ":" + memberId;
@@ -64,29 +76,39 @@ function blankAct(grade) {
 function blankMission() {
   return { virals: Array(MISSION_VIRAL_COUNT).fill(0).map(() => ({ link: "", photo: null })), status: null, rejectedReason: "", submittedAt: null };
 }
+// Figma Foundations 기준 spacing / radius / typography 스케일
+const SP = { 0: 0, 50: 2, 100: 4, 150: 6, 200: 8, 300: 12, 400: 16, 600: 24, 800: 32, 1200: 48 };
+const R = { sm: 4, md: 8, lg: 16, full: 9999 };
+const FZ = { xs: 12, sm: 14, base: 16, subheading: 20, heading: 24 };
 const T = {
-  pc: "#004638", pcL: "#E6F0ED", bg: "#FAF8F5", card: "#fff",
-  border: "#E8E0D5", text: "#2C2C2C", muted: "#888",
+  pc: BRAND_SCALE[800], pcHover: BRAND_SCALE[900],
+  pcL: BRAND_SCALE[200], pcLHover: BRAND_SCALE[300], pcTertiary: BRAND_SCALE[100],
+  pcText: BRAND_SCALE[600],
+  bg: "#FAF8F5", card: "#fff",
+  border: "#E3DED6", text: "#2C2C2C", muted: "#87867F",
   mission: "#7B3F00", missionL: "#FFF3E0",
 };
 const S = {
-  inp: { width: "100%", padding: "10px 14px", border: "1px solid " + T.border, borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", background: "#FAFAFA", marginBottom: 10, fontFamily: "inherit" },
-  btn: (bg, color, sm) => ({ background: bg, color: color || "#fff", border: "none", borderRadius: sm ? 6 : 8, padding: sm ? "5px 10px" : "11px 18px", fontSize: sm ? 12 : 14, fontWeight: 700, cursor: "pointer" }),
-  card: { background: T.card, borderRadius: 14, padding: 18, boxShadow: "0 2px 10px rgba(0,0,0,0.06)", marginBottom: 14 },
-  tag: g => ({ display: "inline-block", padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: GB[g] || "#EEE", color: GC[g] || "#333" }),
-  lbl: { fontSize: 12, fontWeight: 700, color: T.muted, marginBottom: 4, display: "block" },
-  ctr: { maxWidth: 500, margin: "0 auto", padding: "0 16px" },
-  sel: { border: "1px solid " + T.border, borderRadius: 8, padding: "6px 10px", fontSize: 13, fontWeight: 700, color: T.pc, background: T.pcL, cursor: "pointer", outline: "none" },
+  inp: { width: "100%", padding: "12px 16px", border: "1.5px solid " + T.border, borderRadius: R.md, fontSize: FZ.sm, outline: "none", boxSizing: "border-box", background: "#fff", marginBottom: SP[300], fontFamily: "inherit" },
+  btn: (bg, color, sm) => ({ background: bg, color: color || "#fff", border: "none", borderRadius: R.full, padding: sm ? "7px 16px" : "14px 26px", fontSize: sm ? FZ.xs : FZ.sm + 1, fontWeight: 700, letterSpacing: "-0.1px", cursor: "pointer" }),
+  card: { background: T.card, borderRadius: R.lg, padding: 20, boxShadow: "0 4px 18px rgba(0,70,56,0.09)", border: "1px solid " + T.border, marginBottom: SP[400] },
+  tag: g => ({ display: "inline-block", padding: "4px 14px", borderRadius: R.full, fontSize: 11, fontWeight: 800, letterSpacing: "0.2px", background: GB[g] || "#EEE", color: GC[g] || "#333" }),
+  lbl: { fontSize: FZ.xs, fontWeight: 700, color: T.muted, marginBottom: 6, display: "block", letterSpacing: "0.1px" },
+  ctr: { maxWidth: 500, margin: "0 auto", padding: "0 " + SP[400] + "px" },
+  sel: { border: "1.5px solid " + T.border, borderRadius: R.full, padding: "7px 16px", fontSize: 13, fontWeight: 700, color: T.pc, background: T.pcL, cursor: "pointer", outline: "none" },
+  h1: { fontWeight: 800, fontSize: FZ.subheading, letterSpacing: "-0.3px", marginBottom: 18, color: T.text },
+  h2: { fontWeight: 800, fontSize: FZ.base, marginBottom: 12, color: T.text },
 };
 function MissionBadge({ status }) {
   if (!status) return null;
   const map = {
-    submitted: { bg: "#FFF8E1", color: "#B8860B", label: "⏳ 검토 중" },
-    approved:  { bg: "#E8F5E9", color: "#2E7D32", label: "✅ 승인완료" },
-    rejected:  { bg: "#FDECEA", color: "#C0392B", label: "❌ 반려" },
+    submitted: { bg: "#FFF8E1", color: "#B8860B", label: "검토 중", Icon: Clock },
+    approved:  { bg: "#E8F5E9", color: "#2E7D32", label: "승인완료", Icon: CheckCircle2 },
+    rejected:  { bg: "#FDECEA", color: "#C0392B", label: "반려", Icon: XCircle },
   };
   const s = map[status] || {};
-  return <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 10, fontWeight: 700, background: s.bg, color: s.color }}>{s.label}</span>;
+  const Ic = s.Icon;
+  return <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 999, fontWeight: 800, background: s.bg, color: s.color, display: "inline-flex", alignItems: "center", gap: 4 }}>{Ic && <Ic size={12}/>}{s.label}</span>;
 }
 function Logo({ dark }) {
   return BRAND.logoUrl
@@ -143,7 +165,7 @@ function EditMemberModal({ supp, onSave, onClose, existingSupps }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 360, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>✏️ 회원정보 수정</div>
+          <div style={{ fontWeight: 800, fontSize: 17 }}><Pencil size={16} style={{verticalAlign:-3,marginRight:6}}/>회원정보 수정</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: T.muted, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ background: T.pcL, borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontSize: 13, color: T.pc, fontWeight: 600 }}>
@@ -169,7 +191,7 @@ function RejectModal({ suppName, onConfirm, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 360, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
-        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>❌ 반려 사유 입력</div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}><XCircle size={16} style={{verticalAlign:-3,marginRight:6}}/>반려 사유 입력</div>
         <div style={{ fontSize: 13, color: T.muted, marginBottom: 16 }}>{suppName}님의 튼특미션을 반려합니다.</div>
         <label style={S.lbl}>반려 사유 *</label>
         <textarea style={{ ...S.inp, minHeight: 80, resize: "vertical" }} placeholder="써포터즈에게 전달될 반려 사유를 입력해 주세요." value={reason} onChange={e => setReason(e.target.value)} />
@@ -223,7 +245,7 @@ function DmPopupModal({ thread, onReply, onClose, sending }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 380, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>📩 관리자 메시지</div>
+          <div style={{ fontWeight: 800, fontSize: 17 }}><Send size={16} style={{verticalAlign:-3,marginRight:6}}/>관리자 메시지</div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: T.muted, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ background: T.pcL, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
@@ -1112,7 +1134,7 @@ export default function App() {
         </div>
       ) : (
         <label style={{display:"block",border:"1.5px dashed "+(required?"#C0392B":T.border),borderRadius:8,padding:"10px 14px",textAlign:"center",cursor:"pointer",fontSize:12,color:required?"#C0392B":T.muted,background:"#FAFAFA"}}>
-          {uploadingCount>0?"⏳ 압축 중...":required?"📷 사진 업로드 (필수 *)":"📷 사진 업로드"}
+          {uploadingCount>0?"⏳ 압축 중...":required?<>사진 업로드 (필수 *)</>:<>사진 업로드</>}
           <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&uploadPhoto(setter,e.target.files[0])} />
         </label>
       )}
@@ -1126,7 +1148,7 @@ export default function App() {
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
         <div style={{background:T.card,borderRadius:18,padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
           <div style={{textAlign:"center",marginBottom:20}}>
-            <div style={{fontSize:36,marginBottom:8}}>🛍️</div>
+            <div style={{width:56,height:56,borderRadius:"50%",background:T.pcL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px"}}><ShoppingBag size={26} color={T.pc}/></div>
             <div style={{fontWeight:800,fontSize:17,marginBottom:6}}>제품 신청 확인</div>
             <div style={{fontSize:13,color:T.muted,lineHeight:1.6}}>신청하시겠습니까?<br/>신청 후 변경은 불가능합니다.</div>
           </div>
@@ -1147,38 +1169,58 @@ export default function App() {
   };
   // ── LOGIN
   if (view === "login") return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
+    <div style={{minHeight:"100vh",background:"radial-gradient(120% 100% at 50% 0%, "+T.pcTertiary+" 0%, "+T.bg+" 55%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
       <div style={{width:"100%",maxWidth:400}}>
-        <div style={{textAlign:"center",marginBottom:28}}>
-          {BRAND.logoUrl?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:56,objectFit:"contain",marginBottom:8}}/>:<div style={{fontWeight:900,fontSize:32,color:T.pc,marginBottom:8}}>{BRAND.logoText}</div>}
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:96,height:96,borderRadius:"50%",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",boxShadow:"0 10px 30px rgba(0,70,56,0.16)",border:"1px solid "+T.border}}>
+            {BRAND.logoUrl?<img src={BRAND.logoUrl} alt="LALUPPY" style={{height:48,objectFit:"contain"}}/>:<div style={{fontWeight:900,fontSize:22,color:T.pc}}>{BRAND.logoText}</div>}
+          </div>
+          <div style={{display:"inline-block",padding:"5px 14px",borderRadius:R.full,background:T.pcL,color:T.pcText,fontSize:11,fontWeight:800,letterSpacing:"0.4px",marginBottom:10}}>SUPPORTERS PLATFORM</div>
+          <div style={{fontWeight:900,fontSize:24,color:T.text,letterSpacing:"-0.4px",marginBottom:4}}>{BRAND.logoText}</div>
           <div style={{fontSize:13,color:T.muted}}>써포터즈 활동 관리 플랫폼</div>
         </div>
-        <div style={{...S.card,padding:24}}>
-          <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:20}}>
+        <div style={{...S.card,padding:28,borderRadius:R.lg+8,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:"linear-gradient(90deg,"+T.pc+","+T.pcText+")"}}/>
+          <div style={{display:"flex",background:"#F0EBE4",borderRadius:R.full,padding:5,marginBottom:22}}>
             {[false,true].map(isA=>(
               <button key={String(isA)} onClick={()=>{setAdminMode(isA);setLerr("");}}
-                style={{flex:1,padding:"9px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:adminMode===isA?T.card:"transparent",color:adminMode===isA?T.pc:T.muted,boxShadow:adminMode===isA?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>
+                style={{flex:1,padding:"10px 0",border:"none",borderRadius:R.full,cursor:"pointer",fontWeight:700,fontSize:13,background:adminMode===isA?T.pc:"transparent",color:adminMode===isA?"#fff":T.muted,boxShadow:adminMode===isA?"0 2px 8px rgba(0,70,56,0.25)":"none",transition:"all .15s"}}>
                 {isA?"관리자":"써포터즈"}
               </button>
             ))}
           </div>
           {!adminMode?(<>
             <label style={S.lbl}>기수</label>
-            <input style={S.inp} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            <div style={{position:"relative",marginBottom:SP[300]}}>
+              <Users size={16} color={T.muted} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)"}}/>
+              <input style={{...S.inp,marginBottom:0,paddingLeft:40}} placeholder="예: 1기" value={lf.gen} onChange={e=>setLf(f=>({...f,gen:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            </div>
             <label style={S.lbl}>닉네임</label>
-            <input style={S.inp} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            <div style={{position:"relative",marginBottom:SP[300]}}>
+              <User size={16} color={T.muted} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)"}}/>
+              <input style={{...S.inp,marginBottom:0,paddingLeft:40}} placeholder="닉네임" value={lf.nick} onChange={e=>setLf(f=>({...f,nick:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            </div>
             <label style={S.lbl}>전화번호 끝 4자리</label>
-            <input style={S.inp} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:14,userSelect:"none"}}>
+            <div style={{position:"relative",marginBottom:SP[300]}}>
+              <Phone size={16} color={T.muted} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)"}}/>
+              <input style={{...S.inp,marginBottom:0,paddingLeft:40}} placeholder="예: 5678" maxLength={4} value={lf.phone} onChange={e=>setLf(f=>({...f,phone:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",margin:"12px 0 16px",userSelect:"none"}}>
               <div onClick={()=>setSaveId(v=>!v)} style={{width:20,height:20,borderRadius:5,border:"2px solid "+(saveId?T.pc:T.border),background:saveId?T.pc:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                {saveId&&<span style={{color:"#fff",fontSize:13,lineHeight:1}}>✓</span>}
+                {saveId&&<Check size={13} color="#fff" strokeWidth={3}/>}
               </div>
               <span style={{fontSize:13,color:saveId?T.pc:T.muted,fontWeight:saveId?700:400}} onClick={()=>setSaveId(v=>!v)}>아이디 저장</span>
-              {saveId&&<span style={{fontSize:11,color:T.muted,marginLeft:"auto"}}>📱 이 기기에 저장됨</span>}
+              {saveId&&<span style={{fontSize:11,color:T.muted,marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:4}}><Smartphone size={12}/> 이 기기에 저장됨</span>}
             </label>
-          </>):(<><label style={S.lbl}>관리자 코드</label><input style={S.inp} type="password" value={lf.code} onChange={e=>setLf(f=>({...f,code:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} /></>)}
-          {lerr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:10,textAlign:"center"}}>{lerr}</div>}
-          <button onClick={doLogin} style={{...S.btn(T.pc),width:"100%",marginTop:4}}>로그인</button>
+          </>):(<>
+            <label style={S.lbl}>관리자 코드</label>
+            <div style={{position:"relative",marginBottom:SP[300]}}>
+              <ShieldCheck size={16} color={T.muted} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)"}}/>
+              <input style={{...S.inp,marginBottom:0,paddingLeft:40}} type="password" value={lf.code} onChange={e=>setLf(f=>({...f,code:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()} />
+            </div>
+          </>)}
+          {lerr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:10,marginTop:6,textAlign:"center"}}>{lerr}</div>}
+          <button onClick={doLogin} style={{...S.btn(T.pc),width:"100%",marginTop:8}}>로그인</button>
         </div>
       </div>
     </div>
@@ -1208,7 +1250,7 @@ export default function App() {
                 {id==="inquiry"&&hasUnreadDm&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:4,background:"#C0392B",display:"block"}}/>}
               </button>
             ))}
-            <button onClick={()=>{setView("login");setMe(null);setLf({gen:"",nick:"",phone:"",code:""});sessionStorage.clear();}} style={S.btn("#FDECEA","#C0392B",true)}>로그아웃</button>
+            <button onClick={()=>{setView("login");setMe(null);setLf({gen:"",nick:"",phone:"",code:""});sessionStorage.clear();}} style={S.btn("#FDECEA","#C0392B",true)}><LogOut size={13} style={{verticalAlign:-2,marginRight:4}}/>로그아웃</button>
           </div>
         </div>
         {uploadingCount>0&&(
@@ -1218,26 +1260,26 @@ export default function App() {
         )}
         <div style={{...S.ctr,paddingTop:20}}>
           {sp==="notices"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📢 공지사항</div>
+            <div style={S.h1}><Megaphone size={20} style={{verticalAlign:-4,marginRight:6}}/>공지사항</div>
             {myNotices.length===0
               ?<div style={{...S.card,textAlign:"center",color:T.muted,padding:40}}>등록된 공지사항이 없습니다.</div>
               :myNotices.map(n=>(<div key={n.id} style={S.card}><div style={{fontWeight:700,marginBottom:6}}>{n.title}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{n.content}</div><div style={{fontSize:11,color:T.muted,marginTop:8}}>{n.date}</div></div>))}
             <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
               {isMissionOpen&&!isPastDeadline&&(
                 <button onClick={()=>setSp("mission")} style={{...S.btn(T.missionL,T.mission),width:"100%",fontSize:15,padding:"14px",border:"2px solid "+T.mission}}>
-                  🎯 튼특미션 참여하기 →
+                  <Target size={16} style={{verticalAlign:-3,marginRight:6}}/>튼특미션 참여하기 <ArrowRight size={14} style={{verticalAlign:-2}}/>
                   {missionDeadline&&<span style={{fontSize:11,marginLeft:8,opacity:0.8}}>마감 {missionDeadline}</span>}
                 </button>
               )}
-              <button onClick={()=>setSp("product")} style={{...S.btn(T.pcL,T.pc),width:"100%",fontSize:15,padding:"14px"}}>🛍️ 제품 신청하기 →</button>
-              <button onClick={()=>setSp("months")} style={{...S.btn(T.pc),width:"100%"}}>📝 활동 내역 입력하기 →</button>
+              <button onClick={()=>setSp("product")} style={{...S.btn(T.pcL,T.pc),width:"100%",fontSize:15,padding:"14px"}}><ShoppingBag size={16} style={{verticalAlign:-3,marginRight:6}}/>제품 신청하기 <ArrowRight size={14} style={{verticalAlign:-2}}/></button>
+              <button onClick={()=>setSp("months")} style={{...S.btn(T.pc),width:"100%"}}><PenLine size={16} style={{verticalAlign:-3,marginRight:6}}/>활동 내역 입력하기 <ArrowRight size={14} style={{verticalAlign:-2}}/></button>
             </div>
           </>)}
           {sp==="mission"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🎯 튼특크림써포터즈 미션</div>
+            <div style={S.h1}><Target size={20} style={{verticalAlign:-4,marginRight:6}}/>튼특크림써포터즈 미션</div>
             {!isMissionOpen?(
               <div style={{...S.card,textAlign:"center",color:T.muted,padding:40}}>
-                <div style={{fontSize:32,marginBottom:8}}>🔒</div>
+                <Lock size={30} color="#CBD3D0" style={{margin:"0 auto 8px"}}/>
                 <div style={{fontWeight:700}}>현재 미션이 오픈되지 않았습니다.</div>
               </div>
             ):isPastDeadline&&myMission?.status!=="submitted"&&myMission?.status!=="approved"?(
@@ -1269,12 +1311,12 @@ export default function App() {
                 </div>
               )}
               <div style={S.card}>
-                <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📣 튼특 바이럴 ({MISSION_VIRAL_COUNT}건 필수)</div>
+                <div style={S.h2}><Rss size={16} style={{verticalAlign:-3,marginRight:6}}/>튼특 바이럴 ({MISSION_VIRAL_COUNT}건 필수 · 최대 {MISSION_VIRAL_MAX}건)</div>
                 {(myMission||blankMission()).virals.map((v,i)=>(
                   <div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<MISSION_VIRAL_COUNT-1?"1px solid "+T.border:"none"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                       <label style={S.lbl}>바이럴 {i+1} {i<MISSION_VIRAL_COUNT&&<span style={{color:"#C0392B"}}>*</span>}</label>
-                      {myMission?.status!=="approved"&&(
+                      {myMission?.status!=="approved"&&i>=MISSION_VIRAL_COUNT&&(
                         <button onClick={()=>delMissionViral(i)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>
                       )}
                     </div>
@@ -1291,13 +1333,16 @@ export default function App() {
                     }
                   </div>
                 ))}
+                {myMission?.status!=="approved"&&(myMission||blankMission()).virals.length<MISSION_VIRAL_MAX&&(
+                  <button onClick={addMissionViral} style={{...S.btn(T.pcL,T.pc,true),width:"100%"}}><Plus size={13} style={{verticalAlign:-2,marginRight:4}}/>바이럴 추가 ({(myMission||blankMission()).virals.length}/{MISSION_VIRAL_MAX})</button>
+                )}
               </div>
               {myMission?.status!=="approved"&&(<>
                 <button
                   onClick={saveMissionDraft}
                   disabled={missionSaving}
                   style={{...S.btn(T.missionL,T.mission),width:"100%",marginBottom:8,opacity:missionSaving?0.7:1}}>
-                  {missionSaving?"저장 중...":"💾 임시저장"}
+                  {missionSaving?"저장 중...":<><Save size={14} style={{verticalAlign:-2,marginRight:5}}/>임시저장</>}
                 </button>
                 <button
                   onClick={submitMission}
@@ -1315,7 +1360,7 @@ export default function App() {
             </>)}
           </>)}
           {sp==="months"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>{isL?"🎯 활동 차수 선택":"📅 활동 월 선택"}</div>
+            <div style={S.h1}>{isL?<><Target size={20} style={{verticalAlign:-4,marginRight:6}}/>활동 차수 선택</>:<><ClipboardList size={20} style={{verticalAlign:-4,marginRight:6}}/>활동 월 선택</>}</div>
             {isL?(
               <div style={S.card}>
                 <div style={{fontSize:13,color:T.muted,marginBottom:16}}>관리자가 오픈한 차수를 선택하세요.</div>
@@ -1326,7 +1371,7 @@ export default function App() {
                       <button key={cha} onClick={()=>isOpen&&selectCha(cha)}
                         style={{padding:"22px 0",borderRadius:12,border:"2px solid "+(!isOpen?"#EEE":saved?T.pc:T.border),background:!isOpen?"#F5F5F5":saved?T.pcL:T.card,color:!isOpen?"#CCC":saved?T.pc:T.text,fontWeight:800,cursor:isOpen?"pointer":"not-allowed",fontSize:18,position:"relative"}}>
                         {cha}차
-                        {!isOpen&&<div style={{fontSize:11,color:"#CCC",fontWeight:400}}>🔒 미오픈</div>}
+                        {!isOpen&&<div style={{fontSize:11,color:"#CCC",fontWeight:400,display:"flex",alignItems:"center",gap:3}}><Lock size={11}/>미오픈</div>}
                         {isOpen&&saved&&<span style={{position:"absolute",top:6,right:6,width:8,height:8,borderRadius:4,background:T.pc,display:"block"}}/>}
                         {isOpen&&!saved&&<div style={{fontSize:10,color:T.muted,fontWeight:400,marginTop:2}}>입력하기</div>}
                       </button>
@@ -1346,13 +1391,13 @@ export default function App() {
                     return (
                       <button key={m} onClick={()=>accessible&&selectMonth(yr,m)}
                         style={{padding:"10px 0",borderRadius:10,border:"2px solid "+(!accessible?"#EEE":saved?T.pc:T.border),background:!accessible?"#F5F5F5":saved?T.pcL:T.card,color:!accessible?"#CCC":saved?T.pc:T.text,fontWeight:700,cursor:accessible?"pointer":"not-allowed",fontSize:13,position:"relative"}}>
-                        {m}월{!accessible&&<div style={{fontSize:9,color:"#CCC"}}>🔒</div>}
+                        {m}월{!accessible&&<Lock size={9} color="#CCC"/>}
                         {accessible&&saved&&<span style={{position:"absolute",top:4,right:4,width:6,height:6,borderRadius:3,background:T.pc,display:"block"}}/>}
                       </button>
                     );
                   })}
                 </div>
-                <div style={{fontSize:11,color:T.muted,marginTop:12}}>💡 🔒 표시된 달은 아직 오픈되지 않았습니다.</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:12,display:"flex",alignItems:"center",gap:4}}><Lock size={11}/>표시된 달은 아직 오픈되지 않았습니다.</div>
               </div>
             )}
           </>)}
@@ -1365,7 +1410,7 @@ export default function App() {
             </div>
             {isL&&(
               <div style={S.card}>
-                <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📝 블로그</div>
+                <div style={S.h2}><PenLine size={16} style={{verticalAlign:-3,marginRight:6}}/>블로그</div>
                 {act.blogs.map((b,i)=>(
                   <div key={i} style={{marginBottom:12}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -1379,7 +1424,7 @@ export default function App() {
               </div>
             )}
             <div style={S.card}>
-              <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>📣 바이럴</div>
+              <div style={S.h2}><Rss size={16} style={{verticalAlign:-3,marginRight:6}}/>바이럴</div>
               {act.virals.map((v,i)=>(
                 <div key={i} style={{marginBottom:16,paddingBottom:16,borderBottom:i<act.virals.length-1?"1px solid "+T.border:"none"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -1393,7 +1438,7 @@ export default function App() {
               <button onClick={addViral} style={{...S.btn(T.pcL,T.pc,true),width:"100%"}}>+ 바이럴 추가</button>
             </div>
             <div style={S.card}>
-              <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>📌 기타 <span style={{fontWeight:400,fontSize:12,color:T.muted}}>(선택)</span></div>
+              <div style={{...S.h2,marginBottom:4}}><Pin size={16} style={{verticalAlign:-3,marginRight:6}}/>기타 <span style={{fontWeight:400,fontSize:12,color:T.muted}}>(선택)</span></div>
               <div style={{fontSize:12,color:T.muted,marginBottom:14}}>링크 또는 사진 중 하나 이상 입력</div>
               {act.extras.length===0&&<div style={{textAlign:"center",color:T.muted,fontSize:13,padding:"10px 0"}}>+ 버튼으로 추가하세요</div>}
               {act.extras.map((e,i)=>(
@@ -1409,7 +1454,7 @@ export default function App() {
               <button onClick={addExtra} style={{...S.btn(T.pcL,T.pc,true),width:"100%"}}>+ 기타 추가</button>
             </div>
             <div style={{display:"flex",gap:10,position:"sticky",bottom:16}}>
-              <button onClick={()=>doSave(false)} disabled={saving||uploadingCount>0} style={{...S.btn("#EEE8E0",T.text),flex:1,opacity:(saving||uploadingCount>0)?0.5:1}}>{uploadingCount>0?"⏳ 압축 중...":"💾 임시저장"}</button>
+              <button onClick={()=>doSave(false)} disabled={saving||uploadingCount>0} style={{...S.btn("#EEE8E0",T.text),flex:1,opacity:(saving||uploadingCount>0)?0.5:1}}>{uploadingCount>0?"⏳ 압축 중...":<><Save size={14} style={{verticalAlign:-2,marginRight:5}}/>임시저장</>}</button>
               <button onClick={()=>doSave(true)} disabled={saving||uploadingCount>0}
                 style={{...S.btn(T.pc),flex:2,opacity:saving?0.7:1}}>
                 {uploadingCount>0?"⏳ 압축 중...":act.submitted?"🔄 재제출":"✅ 최종 제출"}
@@ -1418,7 +1463,7 @@ export default function App() {
             {savMsg&&<div style={{textAlign:"center",marginTop:8,fontSize:13,fontWeight:700,color:T.pc}}>{savMsg}</div>}
           </>)}
           {sp==="product"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>🛍️ 제품 선택</div>
+            <div style={S.h1}><ShoppingBag size={20} style={{verticalAlign:-4,marginRight:6}}/>제품 선택</div>
             {myMission?.status==="approved"&&(
               <div style={{padding:"10px 14px",background:T.missionL,border:"1.5px solid "+T.mission,borderRadius:10,marginBottom:14,fontSize:13,color:T.mission,fontWeight:600}}>
                 🎯 튼특미션 승인! 제품 1개 추가 신청이 가능합니다.
@@ -1447,7 +1492,7 @@ export default function App() {
                       return (
                         <button key={cha} onClick={()=>isOpen&&setSelectedCha(cha)}
                           style={{padding:"10px 16px",borderRadius:10,border:"2px solid "+(isSel?T.pc:isOpen?T.border:"#EEE"),background:isSel?T.pc:isOpen?T.card:"#F5F5F5",color:isSel?"#fff":isOpen?T.text:"#CCC",fontWeight:700,fontSize:14,cursor:isOpen?"pointer":"not-allowed",minWidth:52}}>
-                          {cha}차{!isOpen&&<div style={{fontSize:9}}>🔒</div>}
+                          {cha}차{!isOpen&&<Lock size={9}/>}
                         </button>
                       );
                     })}
@@ -1500,12 +1545,12 @@ export default function App() {
             </div>
           </>)}
           {sp==="myinfo"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>📦 배송 주소</div>
+            <div style={S.h1}><Package size={20} style={{verticalAlign:-4,marginRight:6}}/>배송 주소</div>
             {myAddress.address&&!addrEditMode?(
               <div style={S.card}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                   <div style={{fontWeight:700,fontSize:14}}>등록된 배송 정보</div>
-                  <button onClick={()=>setAddrEditMode(true)} style={S.btn(T.pcL,T.pc,true)}>✏️ 수정하기</button>
+                  <button onClick={()=>setAddrEditMode(true)} style={S.btn(T.pcL,T.pc,true)}><Pencil size={13} style={{verticalAlign:-2,marginRight:4}}/>수정하기</button>
                 </div>
                 {[["수령인",myAddress.name],["연락처",myAddress.phone],["우편번호",myAddress.zonecode],["주소",myAddress.address],["상세주소",myAddress.addressDetail||"-"]].map(([label,value])=>(
                   <div key={label} style={{display:"flex",gap:12,padding:"10px 14px",background:"#F9F6F2",borderRadius:8,marginBottom:8}}>
@@ -1528,7 +1573,7 @@ export default function App() {
                 <label style={S.lbl}>주소 검색</label>
                 <div style={{display:"flex",gap:8,marginBottom:10}}>
                   <input style={{...S.inp,marginBottom:0,flex:1}} placeholder="우편번호" value={myAddress.zonecode} readOnly />
-                  <button onClick={openPostcode} style={{...S.btn(T.pc),whiteSpace:"nowrap",padding:"10px 16px"}}>🔍 검색</button>
+                  <button onClick={openPostcode} style={{...S.btn(T.pc),whiteSpace:"nowrap",padding:"10px 16px"}}><Search size={13} style={{verticalAlign:-2,marginRight:4}}/>검색</button>
                 </div>
                 <input style={S.inp} placeholder="기본 주소" value={myAddress.address} readOnly />
                 <label style={S.lbl}>상세 주소</label>
@@ -1541,9 +1586,9 @@ export default function App() {
             )}
           </>)}
           {sp==="inquiry"&&(<>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:14}}>💬 관리자 문의</div>
+            <div style={S.h1}><MessageCircle size={20} style={{verticalAlign:-4,marginRight:6}}/>관리자 문의</div>
             {myDms.length>0&&(<>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📩 관리자 메시지 ({myDms.length}건)</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:10}}><Send size={16} style={{verticalAlign:-3,marginRight:6}}/>관리자 메시지 ({myDms.length}건)</div>
               {myDms.slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(d=>{
                 const lastMsg=d.messages[d.messages.length-1];
                 const hasUnread=lastMsg?.from==="admin"&&!d.supporterRead;
@@ -1604,7 +1649,7 @@ export default function App() {
       {rejectTarget&&<RejectModal suppName={rejectTarget.suppName} onConfirm={reason=>rejectMission(rejectTarget,reason)} onClose={()=>setRejectTarget(null)}/>}
       <div style={{background:T.pc,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
-        <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={S.btn("rgba(255,255,255,0.15)","#fff",true)}>로그아웃</button>
+        <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={S.btn("rgba(255,255,255,0.15)","#fff",true)}><LogOut size={13} style={{verticalAlign:-2,marginRight:4}}/>로그아웃</button>
       </div>
       <div style={{display:"flex",background:T.card,borderBottom:"1px solid "+T.border,overflowX:"auto"}}>
         {[["supporters","써포터즈"],["notices","공지사항"],["products","제품관리"],["activities","활동조회"],["missions","튼특미션"],["inquiries","문의관리"]].map(([id,tabName])=>(
@@ -1623,7 +1668,7 @@ export default function App() {
       <div style={{...S.ctr,paddingTop:20}}>
         {atab==="supporters"&&(<>
           <div style={S.card}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>➕ 써포터즈 등록</div>
+            <div style={S.h2}><UserPlus size={16} style={{verticalAlign:-3,marginRight:6}}/>써포터즈 등록</div>
             <label style={S.lbl}>기수</label><input style={S.inp} placeholder="예: 1기" value={af.gen} onChange={e=>setAf(f=>({...f,gen:e.target.value}))} />
             <label style={S.lbl}>닉네임</label><input style={S.inp} placeholder="닉네임" value={af.nick} onChange={e=>setAf(f=>({...f,nick:e.target.value}))} />
             <label style={S.lbl}>전화번호 끝 4자리</label><input style={S.inp} placeholder="예: 5678" maxLength={4} value={af.phone} onChange={e=>setAf(f=>({...f,phone:e.target.value}))} />
@@ -1632,8 +1677,8 @@ export default function App() {
           </div>
           <div style={S.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:15}}>📊 회원 엑셀 일괄 등록</div>
-              <button onClick={downloadTemplate} style={S.btn(T.pcL,T.pc,true)}>📥 양식</button>
+              <div style={S.h2}><FileSpreadsheet size={16} style={{verticalAlign:-3,marginRight:6}}/>회원 엑셀 일괄 등록</div>
+              <button onClick={downloadTemplate} style={S.btn(T.pcL,T.pc,true)}><Download size={13} style={{verticalAlign:-2,marginRight:4}}/>양식</button>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:10}}>기수·닉네임·전화번호 필수 / 주소 선택</div>
             <label style={{display:"block",border:"1.5px dashed "+T.border,borderRadius:8,padding:"12px",textAlign:"center",cursor:"pointer",fontSize:13,color:T.muted,background:"#FAFAFA",marginBottom:8}}>
@@ -1642,14 +1687,14 @@ export default function App() {
             {excelErr&&<div style={{color:"#C0392B",fontSize:13,marginBottom:8}}>{excelErr}</div>}
             {excelPreview.length>0&&(<>
               <div style={{maxHeight:140,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,marginBottom:10}}>
-                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:"1px solid "+T.border,fontSize:13,display:"flex",gap:10}}><span style={{color:T.muted}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:T.muted}}>{p.phone}</span>{p.address&&<span style={{color:T.pc,fontSize:11}}>📦 주소있음</span>}</div>))}
+                {excelPreview.map((p,i)=>(<div key={i} style={{padding:"7px 12px",borderBottom:"1px solid "+T.border,fontSize:13,display:"flex",gap:10}}><span style={{color:T.muted}}>{i+1}</span><span style={{fontWeight:700}}>{p.gen}</span><span>{p.nick}</span><span style={{color:T.muted}}>{p.phone}</span>{p.address&&<span style={{color:T.pc,fontSize:11,display:"inline-flex",alignItems:"center",gap:3}}><Package size={11}/>주소있음</span>}</div>))}
               </div>
               <div style={{display:"flex",gap:8}}><button onClick={confirmExcelUpload} style={{...S.btn(T.pc),flex:1}}>✅ 등록 확정</button><button onClick={()=>setExcelPreview([])} style={S.btn("#EEE8E0",T.text)}>취소</button></div>
             </>)}
           </div>
           <div style={S.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bulkMode?14:0}}>
-              <div style={{fontWeight:700,fontSize:15}}>👥 일괄 등급 변경</div>
+              <div style={S.h2}><Users size={16} style={{verticalAlign:-3,marginRight:6}}/>일괄 등급 변경</div>
               <button onClick={()=>{setBulkMode(v=>!v);setBulkSelected(new Set());setBulkMsg("");}} style={S.btn(bulkMode?"#EEE8E0":T.pcL,bulkMode?T.text:T.pc,true)}>
                 {bulkMode?"취소":"선택 모드 켜기"}
               </button>
@@ -1696,7 +1741,7 @@ export default function App() {
             </>)}
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontWeight:700,fontSize:15}}>써포터즈 목록 ({supps.length}명)</div>
+            <div style={S.h2}>써포터즈 목록 ({supps.length}명)</div>
           </div>
           <div style={{background:T.card,borderRadius:12,padding:"12px 14px",boxShadow:"0 2px 10px rgba(0,0,0,0.06)",marginBottom:14}}>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:8,padding:3,marginBottom:10}}>
@@ -1708,7 +1753,7 @@ export default function App() {
               ))}
             </div>
             <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:15,pointerEvents:"none"}}>🔍</span>
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex"}}><Search size={15} color={T.muted}/></span>
               <input style={{width:"100%",padding:"9px 36px",border:"1.5px solid "+(suppSearch?T.pc:T.border),borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#FAFAFA",fontFamily:"inherit"}}
                 placeholder="기수 또는 닉네임으로 검색" value={suppSearch} onChange={e=>setSuppSearch(e.target.value)} />
               {suppSearch&&<button onClick={()=>setSuppSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.muted,lineHeight:1,padding:0}}>×</button>}
@@ -1735,7 +1780,7 @@ export default function App() {
                   </div>
                   {!bulkMode&&<select value={s.grade} onChange={e=>changeGrade(s.id,e.target.value)} style={{border:"1.5px solid "+T.border,borderRadius:6,padding:"4px 8px",fontSize:12,fontWeight:700,color:GC[s.grade],background:GB[s.grade],cursor:"pointer",outline:"none"}}><option value={G.L}>라루피</option><option value={G.S}>라루피시크릿</option></select>}
                   {bulkMode&&<span style={S.tag(s.grade)}>{GN[s.grade]}</span>}
-                  {!bulkMode&&<button onClick={e=>{e.stopPropagation();setEditTarget(s);}} style={S.btn(T.pcL,T.pc,true)}>✏️ 수정</button>}
+                  {!bulkMode&&<button onClick={e=>{e.stopPropagation();setEditTarget(s);}} style={S.btn(T.pcL,T.pc,true)}><Pencil size={13} style={{verticalAlign:-2,marginRight:4}}/>수정</button>}
                   {!bulkMode&&<button onClick={()=>openSuppActs(s)} style={S.btn("#EEE8E0",T.text,true)}>조회</button>}
                   {!bulkMode&&<button onClick={()=>delSupporter(s.id)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>}
                 </div>
@@ -1745,7 +1790,7 @@ export default function App() {
         </>)}
         {atab==="notices"&&(<>
           <div style={S.card}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>📢 공지사항 등록</div>
+            <div style={S.h2}><Megaphone size={16} style={{verticalAlign:-3,marginRight:6}}/>공지사항 등록</div>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
               {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
                 <button key={g} onClick={()=>setNGrade(g)} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:nGrade===g?T.card:"transparent",color:nGrade===g?GC[g]:T.muted,boxShadow:nGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>
@@ -1782,7 +1827,7 @@ export default function App() {
               ))}
             </div>
             {prodGrade===G.L&&(<>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>🔓 기수별 차수 오픈 관리</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:6,display:"flex",alignItems:"center",gap:6}}><Unlock size={15}/>기수별 차수 오픈 관리</div>
               <div style={{fontSize:12,color:T.muted,marginBottom:12}}>기수를 선택한 후 차수를 오픈/클로즈 하세요.</div>
               <label style={S.lbl}>기수 선택</label>
               {(()=>{
@@ -1803,12 +1848,12 @@ export default function App() {
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
             </>)}
             {prodGrade===G.S&&(<>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>🔓 활동 오픈 달 설정</div>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><Unlock size={15}/>활동 오픈 달 설정</div>
               <div style={{fontSize:12,color:T.muted,marginBottom:12}}>오픈된 달만 써포터즈가 미래 달 활동을 입력할 수 있습니다.</div>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
                 <select value={newOpenMonth.year} onChange={e=>setNewOpenMonth(m=>({...m,year:+e.target.value}))} style={{...S.sel,flex:1}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
                 <select value={newOpenMonth.month} onChange={e=>setNewOpenMonth(m=>({...m,month:+e.target.value}))} style={{...S.sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
-                <button onClick={addOpenMonth} style={{...S.btn(T.pc,undefined,true),padding:"8px 14px",whiteSpace:"nowrap"}}>🔓 오픈</button>
+                <button onClick={addOpenMonth} style={{...S.btn(T.pc,undefined,true),padding:"8px 14px",whiteSpace:"nowrap"}}><Unlock size={13} style={{verticalAlign:-2,marginRight:4}}/>오픈</button>
               </div>
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginBottom:10,fontWeight:700}}>{prodMsg}</div>}
               <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:8}}>현재 오픈된 달</div>
@@ -1816,7 +1861,7 @@ export default function App() {
             </>)}
           </div>
           <div style={S.card}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>🛍️ 제품 등록</div>
+            <div style={S.h2}><ShoppingBag size={16} style={{verticalAlign:-3,marginRight:6}}/>제품 등록</div>
             {prodGrade===G.L?(
               <>
                 <label style={S.lbl}>차수 선택</label>
@@ -1839,7 +1884,7 @@ export default function App() {
             <label style={S.lbl}>제품명</label><input style={S.inp} placeholder="제품명 입력" value={newProd.name} onChange={e=>setNewProd(p=>({...p,name:e.target.value}))} />
             <label style={S.lbl}>제품 코드</label><input style={S.inp} placeholder="제품 코드 입력" value={newProd.code} onChange={e=>setNewProd(p=>({...p,code:e.target.value}))} />
             <div style={{display:"flex",gap:8,marginTop:4}}>
-              <button onClick={addProduct} style={{...S.btn(T.pc),flex:2}}>➕ 제품 추가</button>
+              <button onClick={addProduct} style={{...S.btn(T.pc),flex:2}}><Plus size={15} style={{verticalAlign:-2,marginRight:4}}/>제품 추가</button>
               <button onClick={loadPrevMonthProds} disabled={loadingPrevProd} style={{...S.btn(T.pcL,T.pc),flex:1,fontSize:12,opacity:loadingPrevProd?0.7:1}}>
                 {loadingPrevProd?"불러오는 중...":prodGrade===G.L?(prodCha-1>0?prodCha-1+"차":"이전")+" 불러오기":"지난달 불러오기"}
               </button>
@@ -1848,14 +1893,14 @@ export default function App() {
           </div>
           <div style={S.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <div style={{fontWeight:700,fontSize:15}}>🎁 추가 신청 허용 설정</div>
+              <div style={S.h2}><Gift size={16} style={{verticalAlign:-3,marginRight:6}}/>추가 신청 허용 설정</div>
               <div style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:T.pcL,color:T.pc,fontWeight:700}}>기본: 라루피 {BASE_QUOTA[G.L]}건 · 시크릿 {BASE_QUOTA[G.S]}건</div>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준</div>
             <div style={{background:"#F9F6F2",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
               <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:8}}>회원 검색</div>
               <div style={{position:"relative",marginBottom:8}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,pointerEvents:"none"}}>🔍</span>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex"}}><Search size={14} color={T.muted}/></span>
                 <input style={{width:"100%",padding:"8px 10px 8px 32px",border:"1.5px solid "+(extraQuotaSearch?T.pc:T.border),borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#fff",fontFamily:"inherit"}}
                   placeholder="기수 또는 닉네임으로 검색" value={extraQuotaSearch} onChange={e=>setExtraQuotaSearch(e.target.value)} />
                 {extraQuotaSearch&&<button onClick={()=>setExtraQuotaSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.muted,padding:0}}>×</button>}
@@ -1919,7 +1964,7 @@ export default function App() {
         {atab==="activities"&&(<>
           {!viewSupp?(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-              <span style={{fontWeight:700,fontSize:15}}>활동 현황</span>
+              <span style={S.h2}>활동 현황</span>
               <select value={actYear} onChange={e=>{const y=+e.target.value;setActYear(y);loadActSummary(y);}} style={S.sel}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
               <select value={actMonth} onChange={e=>setActMonth(+e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
               <select value={actGen} onChange={e=>setActGen(e.target.value)} style={S.sel}>
@@ -1937,8 +1982,8 @@ export default function App() {
               📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGen==="전체"?"전체 기수":actGen} · {actGrade==="전체"?"전체 등급":GN[actGrade]}
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={downloadActivityExcel} disabled={downloadingAct||downloadingSel} style={{...S.btn(T.pc,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingAct?0.7:1}}>{downloadingAct?"생성 중...":"📥 활동내역 엑셀"}</button>
-              <button onClick={downloadSelectionExcel} disabled={downloadingAct||downloadingSel} style={{...S.btn("#2A6B55",undefined,true),padding:"8px 14px",flex:1,opacity:downloadingSel?0.7:1}}>{downloadingSel?"생성 중...":"📦 신청상품 취합"}</button>
+              <button onClick={downloadActivityExcel} disabled={downloadingAct||downloadingSel} style={{...S.btn(T.pc,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingAct?0.7:1}}>{downloadingAct?"생성 중...":<><Download size={13} style={{verticalAlign:-2,marginRight:4}}/>활동내역 엑셀</>}</button>
+              <button onClick={downloadSelectionExcel} disabled={downloadingAct||downloadingSel} style={{...S.btn(T.pcText,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingSel?0.7:1}}>{downloadingSel?"생성 중...":<><Package size={13} style={{verticalAlign:-2,marginRight:4}}/>신청상품 취합</>}</button>
             </div>
             {supps.length===0&&<div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>등록된 써포터즈가 없습니다.</div>}
             {loadingSum&&<div style={{textAlign:"center",padding:20,color:T.muted}}>불러오는 중...</div>}
@@ -2011,7 +2056,7 @@ export default function App() {
         </>)}
         {atab==="missions"&&(<>
           <div style={{...S.card,border:"2px solid "+T.mission}}>
-            <div style={{fontWeight:700,fontSize:15,color:T.mission,marginBottom:14}}>🎯 튼특미션 설정 <span style={{fontWeight:400,fontSize:12,color:T.muted}}>(라루피·라루피시크릿 공통)</span></div>
+            <div style={{...S.h2,color:T.mission}}><Target size={16} style={{verticalAlign:-3,marginRight:6}}/>튼특미션 설정 <span style={{fontWeight:400,fontSize:12,color:T.muted}}>(라루피·라루피시크릿 공통)</span></div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
               <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
                 <div onClick={()=>setMissionSettingForm(s=>({...s,isOpen:!s.isOpen}))}
@@ -2046,7 +2091,7 @@ export default function App() {
                 <div style={{background:"#FAFAFA",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                     <div style={{fontSize:12,fontWeight:700,color:T.muted}}>📊 엑셀로 대상자 일괄 추가</div>
-                    <button onClick={downloadMissionTargetTemplate} style={S.btn(T.missionL,T.mission,true)}>📥 양식</button>
+                    <button onClick={downloadMissionTargetTemplate} style={S.btn(T.missionL,T.mission,true)}><Download size={13} style={{verticalAlign:-2,marginRight:4}}/>양식</button>
                   </div>
                   <label style={{display:"block",border:"1.5px dashed "+T.border,borderRadius:8,padding:"10px",textAlign:"center",cursor:"pointer",fontSize:12,color:T.muted,background:"#fff",marginBottom:8}}>
                     📂 엑셀 파일 선택 (기수, 닉네임 컬럼)
@@ -2077,7 +2122,7 @@ export default function App() {
             {missionSettingMsg&&<div style={{textAlign:"center",fontSize:13,fontWeight:700,color:T.mission,marginTop:8}}>{missionSettingMsg}</div>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-            <span style={{fontWeight:700,fontSize:15}}>📋 미션 현황</span>
+            <span style={S.h2}><ClipboardList size={16} style={{verticalAlign:-3,marginRight:6}}/>미션 현황</span>
             <select value={missionGradeFilter} onChange={e=>setMissionGradeFilter(e.target.value)} style={S.sel}>
               <option value="전체">전체 등급</option>
               <option value={G.L}>라루피</option>
@@ -2185,7 +2230,7 @@ export default function App() {
           </>)}
           {iqSubTab==="sent"&&(<>
             <div style={S.card}>
-              <div style={{fontWeight:700,fontSize:15,marginBottom:12}}>📩 회원에게 메시지 보내기</div>
+              <div style={S.h2}><Send size={16} style={{verticalAlign:-3,marginRight:6}}/>회원에게 메시지 보내기</div>
               <label style={S.lbl}>받는 회원</label>
               {dmSuppTarget?(
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:T.pcL,borderRadius:8,marginBottom:10}}>

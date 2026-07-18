@@ -377,6 +377,7 @@ export default function App() {
   const [actMonth, setActMonth] = useState(new Date().getMonth() + 1);
   const [actGen, setActGen] = useState("전체");
   const [actGrade, setActGrade] = useState("전체");
+  const [actStatusFilter, setActStatusFilter] = useState("all");
   const [actSummary, setActSummary] = useState({});
   const [loadingSum, setLoadingSum] = useState(false);
   const [allInquiries, setAllInquiries] = useState([]);
@@ -603,19 +604,26 @@ export default function App() {
     if (!list.length) return;
     setLoadingSum(true);
     const entries = await Promise.all(list.map(async s => {
-      const keys = await db.list("activity:" + s.id + ":" + year + ":");
+      // 라루피(L)는 "activity:{id}:cha:{cha}", 라루피시크릿(S)은 "activity:{id}:{year}:{month}" 형식으로 저장되므로
+      // 등급을 미리 구분하지 않고 해당 회원의 모든 activity 키를 가져온 뒤 형식별로 분류한다.
+      const keys = await db.list("activity:" + s.id + ":");
       const acts = await Promise.all(keys.map(k => db.get(k)));
-      const monthData = {};
+      const monthData = {}, chaData = {};
       acts.forEach((d, i) => {
-        if (d) {
-          const month = +keys[i].split(":")[3];
-          const bc = (d.blogs || []).filter(b => b.link).length;
-          const vc = (d.virals || []).filter(v => v.link || v.photo).length;
-          const ec = (d.extras || []).filter(e => e.link || e.photo).length;
-          monthData[month] = { blogs: bc, virals: vc, extras: ec, total: bc + vc + ec, submitted: d.submitted || false };
+        if (!d) return;
+        const parts = keys[i].split(":");
+        const bc = (d.blogs || []).filter(b => b.link).length;
+        const vc = (d.virals || []).filter(v => v.link || v.photo).length;
+        const ec = (d.extras || []).filter(e => e.link || e.photo).length;
+        const entry = { blogs: bc, virals: vc, extras: ec, total: bc + vc + ec, submitted: d.submitted || false };
+        if (parts[2] === "cha") {
+          chaData[+parts[3]] = entry;
+        } else {
+          const y = +parts[2], m = +parts[3];
+          if (y === year) monthData[m] = entry;
         }
       });
-      return [s.id, monthData];
+      return [s.id, { month: monthData, cha: chaData }];
     }));
     setActSummary(Object.fromEntries(entries));
     setLoadingSum(false);
@@ -2026,6 +2034,12 @@ export default function App() {
                 <option value={G.L}>라루피</option>
                 <option value={G.S}>라루피시크릿</option>
               </select>
+              <select value={actStatusFilter} onChange={e=>setActStatusFilter(e.target.value)} style={S.sel}>
+                <option value="all">전체 상태 (활동한 회원 우선정렬)</option>
+                <option value="active">활동한 회원만 (진행중+제출완료)</option>
+                <option value="submitted">제출완료만</option>
+                <option value="none">미입력만</option>
+              </select>
               <button onClick={()=>loadActSummary(actYear)} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
             </div>
             <div style={{background:T.pcL,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:T.pc,fontWeight:700}}>
@@ -2037,15 +2051,38 @@ export default function App() {
             </div>
             {supps.length===0&&<div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>등록된 써포터즈가 없습니다.</div>}
             {loadingSum&&<div style={{textAlign:"center",padding:20,color:T.muted}}>불러오는 중...</div>}
-            {!loadingSum&&supps.filter(s=>(actGen==="전체"||s.gen===actGen)&&(actGrade==="전체"||s.grade===actGrade)).map(s=>{
-              const d=(actSummary[s.id]||{})[actMonth],has=!!d&&d.total>0;
-              return (
+            {!loadingSum&&(()=>{
+              const rows=supps.filter(s=>(actGen==="전체"||s.gen===actGen)&&(actGrade==="전체"||s.grade===actGrade)).map(s=>{
+                const isL=s.grade===G.L;
+                const summary=actSummary[s.id]||{};
+                let d=null, chaLabel="";
+                if (isL) {
+                  const chaKeys=Object.keys(summary.cha||{}).map(Number);
+                  if (chaKeys.length) { const latest=Math.max(...chaKeys); d=summary.cha[latest]; chaLabel=latest+"차 · "; }
+                } else {
+                  d=(summary.month||{})[actMonth];
+                }
+                const has=!!d&&d.total>0;
+                const rank=d?.submitted?2:has?1:0; // 2=제출완료, 1=진행중, 0=미입력
+                return { s, d, has, isL, chaLabel, rank };
+              });
+              const filtered=rows.filter(r=>{
+                if (actStatusFilter==="active") return r.rank>=1;
+                if (actStatusFilter==="submitted") return r.rank===2;
+                if (actStatusFilter==="none") return r.rank===0;
+                return true;
+              });
+              // 활동한 회원 우선 정렬 (제출완료 > 진행중 > 미입력), 동순위 내에서는 원래 순서 유지
+              const sorted=filtered.map((r,i)=>({...r,i})).sort((a,b)=>b.rank-a.rank||a.i-b.i);
+              if (sorted.length===0) return <div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>조건에 맞는 회원이 없습니다.</div>;
+              return sorted.map(({s,d,has,isL,chaLabel})=>(
                 <div key={s.id} style={{...S.card,padding:"14px 16px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
                         <span style={S.tag(s.grade)}>{GN[s.grade]}</span>
+                        {isL&&chaLabel&&<span style={{fontSize:11,color:T.muted}}>{chaLabel}</span>}
                         {d?.submitted
                           ?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>
                           :has?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#FFF3E0",color:"#E67E22",fontWeight:700}}>진행중 · {d.total}건</span>
@@ -2058,8 +2095,8 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ));
+            })()}
           </>):(<>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
               <button onClick={()=>setViewSupp(null)} style={S.btn("#EEE8E0",T.text,true)}>← 목록</button>

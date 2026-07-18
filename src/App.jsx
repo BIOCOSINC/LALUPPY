@@ -263,6 +263,30 @@ function DmPopupModal({ thread, onReply, onClose, sending }) {
     </div>
   );
 }
+function InquiryReplyPopupModal({ iq, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 380, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}><MessageCircle size={16} style={{verticalAlign:-3,marginRight:6}}/>문의 답변 도착</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: T.muted, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 700 }}>내가 보낸 문의</div>
+        <div style={{ background: "#F9F6F2", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{iq.title}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", color: T.muted }}>{iq.content}</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>{iq.date}</div>
+        </div>
+        <div style={{ fontSize: 12, color: T.pc, marginBottom: 6, fontWeight: 700 }}>관리자 답변</div>
+        <div style={{ background: T.pcL, borderRadius: 10, padding: "12px 14px", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{iq.reply}</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>{iq.replyDate}</div>
+        </div>
+        <button onClick={onClose} style={{ ...S.btn(T.pc), width: "100%" }}>확인</button>
+      </div>
+    </div>
+  );
+}
 export default function App() {
   useEffect(() => {
     const s = document.createElement("script");
@@ -329,6 +353,7 @@ export default function App() {
   // 관리자 메시지 (DM) - 써포터즈 측
   const [myDms, setMyDms] = useState([]);
   const [popupDm, setPopupDm] = useState(null);
+  const [popupIq, setPopupIq] = useState(null);
   const [dmReplyDrafts, setDmReplyDrafts] = useState({});
   const [dmReplySendingId, setDmReplySendingId] = useState(null);
   const [atab, setAtab] = useState("supporters");
@@ -482,6 +507,14 @@ export default function App() {
         setMyDms(next);
       })();
     }
+    if (sp === "inquiry" && me && myInquiries.some(iq => iq.reply && iq.replyRead === false)) {
+      (async () => {
+        const iqs = await db.get("inquiries:" + me.id) || [];
+        const next = iqs.map(iq => (iq.reply && iq.replyRead === false) ? { ...iq, replyRead: true } : iq);
+        await db.set("inquiries:" + me.id, next);
+        setMyInquiries(next);
+      })();
+    }
   }, [sp]);
   useEffect(() => {
     if (atab === "products" && view === "admin") { loadAdminProds(); loadExtraQuota(); }
@@ -504,7 +537,20 @@ export default function App() {
     const saved = await db.get("activity:" + me.id + ":cha:" + cha);
     setAct(saved || blankAct(me.grade)); setSp("activity");
   };
-  const loadMyInquiries = async uid => setMyInquiries(await db.get("inquiries:" + uid) || []);
+  const loadMyInquiries = async uid => {
+    const list = await db.get("inquiries:" + uid) || [];
+    setMyInquiries(list);
+    const unreadReply = list.find(iq => iq.reply && iq.replyRead === false);
+    if (unreadReply) setPopupIq(unreadReply);
+  };
+  const closeIqPopup = async () => {
+    if (!popupIq || !me) return;
+    const iqs = await db.get("inquiries:" + me.id) || [];
+    const next = iqs.map(iq => iq.id === popupIq.id ? { ...iq, replyRead: true } : iq);
+    await db.set("inquiries:" + me.id, next);
+    setMyInquiries(next);
+    setPopupIq(null);
+  };
   const loadAvailableProds = async () => {
     if (!me) return;
     if (me.grade === G.L) setAvailableProds(await db.get("products:laroupi:cha:" + selectedCha) || []);
@@ -955,7 +1001,7 @@ export default function App() {
   const sendReply = async () => {
     if (!replyText.trim()) { setReplyMsg("답변 내용을 입력해 주세요."); return; }
     const iqs = await db.get("inquiries:" + selInquiry.suppId) || [];
-    const next = iqs.map(iq => iq.id === selInquiry.id ? { ...iq, reply: replyText.trim(), replyDate: new Date().toLocaleDateString("ko-KR") } : iq);
+    const next = iqs.map(iq => iq.id === selInquiry.id ? { ...iq, reply: replyText.trim(), replyDate: new Date().toLocaleDateString("ko-KR"), replyRead: false } : iq);
     if (await db.set("inquiries:" + selInquiry.suppId, next)) {
       const updated = { ...selInquiry, reply: replyText.trim(), replyDate: new Date().toLocaleDateString("ko-KR") };
       setSelInquiry(updated); setAllInquiries(prev => prev.map(iq => iq.id === selInquiry.id ? updated : iq));
@@ -1238,6 +1284,7 @@ export default function App() {
       <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
         <ConfirmModal />
         {popupDm && <DmPopupModal thread={popupDm} onReply={replyDmFromPopup} onClose={closeDmPopup} sending={dmReplySendingId === popupDm.id} />}
+        {!popupDm && popupIq && <InquiryReplyPopupModal iq={popupIq} onClose={closeIqPopup} />}
         <div style={{background:T.card,borderBottom:"1px solid "+T.border,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
           <div><Logo /><div style={{fontSize:11,color:T.muted,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={S.tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -1622,10 +1669,13 @@ export default function App() {
             {myInquiries.length===0
               ?<div style={{...S.card,textAlign:"center",color:T.muted,padding:32,fontSize:13}}>아직 문의 내역이 없습니다.</div>
               :myInquiries.map(iq=>(
-                <div key={iq.id} style={{...S.card,borderLeft:"3px solid "+(iq.reply?T.pc:T.border)}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                <div key={iq.id} style={{...S.card,borderLeft:"3px solid "+(iq.reply&&iq.replyRead===false?"#C0392B":iq.reply?T.pc:T.border)}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:8}}>
                     <div style={{fontWeight:700,fontSize:14}}>{iq.title}</div>
-                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,fontWeight:700,background:iq.reply?T.pcL:"#F5F5F5",color:iq.reply?T.pc:T.muted,whiteSpace:"nowrap",marginLeft:8}}>{iq.reply?"답변완료":"답변대기"}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                      {iq.reply&&iq.replyRead===false&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:10,fontWeight:700,background:"#FDECEA",color:"#C0392B"}}>NEW</span>}
+                      <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,fontWeight:700,background:iq.reply?T.pcL:"#F5F5F5",color:iq.reply?T.pc:T.muted,whiteSpace:"nowrap"}}>{iq.reply?"답변완료":"답변대기"}</span>
+                    </div>
                   </div>
                   <div style={{fontSize:13,color:T.muted,marginBottom:6,whiteSpace:"pre-wrap"}}>{iq.content}</div>
                   <div style={{fontSize:11,color:T.muted}}>{iq.date}</div>
@@ -1996,13 +2046,13 @@ export default function App() {
                       <div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
                         <span style={S.tag(s.grade)}>{GN[s.grade]}</span>
-                        {has?<span style={{fontSize:11,color:T.pc,fontWeight:700}}>총 {d.total}건</span>:<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
+                        {has?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#FFF3E0",color:"#E67E22",fontWeight:700}}>진행중 · {d.total}건</span>:<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
                         {d?.submitted&&<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:10,height:10,borderRadius:5,background:has?T.pc:"#DDD"}}/>
-                      <button onClick={()=>openSuppActs(s)} style={S.btn(T.pcL,T.pc,true)}>상세 조회</button>
+                      <div style={{width:10,height:10,borderRadius:5,background:has?"#E67E22":"#DDD"}}/>
+                      <button onClick={()=>openSuppActs(s)} style={has?S.btn(T.pcL,T.pc,true):S.btn("#F2F1EE","#BBB",true)}>상세 조회</button>
                     </div>
                   </div>
                 </div>

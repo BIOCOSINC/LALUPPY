@@ -2046,12 +2046,14 @@ export default function App() {
                       <div style={{fontWeight:700,fontSize:14}}>{s.gen} · {s.nick}</div>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
                         <span style={S.tag(s.grade)}>{GN[s.grade]}</span>
-                        {has?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#FFF3E0",color:"#E67E22",fontWeight:700}}>진행중 · {d.total}건</span>:<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
-                        {d?.submitted&&<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}
+                        {d?.submitted
+                          ?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>
+                          :has?<span style={{fontSize:11,padding:"1px 8px",borderRadius:10,background:"#FFF3E0",color:"#E67E22",fontWeight:700}}>진행중 · {d.total}건</span>
+                          :<span style={{fontSize:11,color:"#BBB"}}>미입력</span>}
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:10,height:10,borderRadius:5,background:has?"#E67E22":"#DDD"}}/>
+                      <div style={{width:10,height:10,borderRadius:5,background:d?.submitted?"#2E7D32":has?"#E67E22":"#DDD"}}/>
                       <button onClick={()=>openSuppActs(s)} style={has?S.btn(T.pcL,T.pc,true):S.btn("#F2F1EE","#BBB",true)}>상세 조회</button>
                     </div>
                   </div>

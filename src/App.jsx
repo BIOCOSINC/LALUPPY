@@ -996,7 +996,7 @@ export default function App() {
     setViewSupp(supp); setLoadingVA(true);
     const keys = await db.list("activity:" + supp.id + ":");
     const acts = (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean);
-    acts.sort((a, b) => b.year - a.year || b.month - a.month);
+    acts.sort((a, b) => (b.cha||0) - (a.cha||0) || (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0));
     setViewActs(acts); setLoadingVA(false);
   };
   const loadAllInquiries = async () => {
@@ -1115,27 +1115,58 @@ export default function App() {
     const extra = [["기수","닉네임","등급","년도","월","순번","링크","사진등록"]];
     await Promise.all(targetSupps.map(async s => {
       const grade = GN[s.grade];
-      const [addr, d] = await Promise.all([db.get("address:" + s.id), db.get("activity:" + s.id + ":" + actYear + ":" + actMonth)]);
+      const isL = s.grade === G.L;
+      const addr = await db.get("address:" + s.id);
       const addrData = addr || {};
-      if (!d) return;
       let selItems = [];
-      if (s.grade === G.L) {
+      let actMap = {}; // L: {cha:data}, S: {single:data}
+      if (isL) {
         const slotKeys = await db.list("selection:" + s.id + ":cha:");
         const allSels = (await Promise.all(slotKeys.map(k => db.get(k)))).filter(Boolean);
         selItems = allSels.filter(cs => cs.selYear === actYear && cs.selMonth === actMonth);
+        const chaKeys = await db.list("activity:" + s.id + ":cha:");
+        const chaActs = await Promise.all(chaKeys.map(k => db.get(k)));
+        chaKeys.forEach((k, i) => { if (chaActs[i]) actMap[+k.split(":")[3]] = chaActs[i]; });
       } else {
         const slotKeys = await db.list("selection:" + s.id + ":" + actYear + ":" + actMonth + ":slot:");
         selItems = (await Promise.all(slotKeys.map(k => db.get(k)))).filter(Boolean);
+        const d = await db.get("activity:" + s.id + ":" + actYear + ":" + actMonth);
+        if (d) actMap.single = d;
       }
-      const bc = (d.blogs||[]).filter(b=>b.link).length, vc = (d.virals||[]).filter(v=>v.link||v.photo).length, ec = (d.extras||[]).filter(e=>e.link||e.photo).length;
+      const hasAnyAct = isL ? Object.keys(actMap).length > 0 : !!actMap.single;
+      if (!hasAnyAct && selItems.length === 0) return;
+
+      const rowFor = d => ({
+        bc: d ? (d.blogs||[]).filter(b=>b.link).length : 0,
+        vc: d ? (d.virals||[]).filter(v=>v.link||v.photo).length : 0,
+        ec: d ? (d.extras||[]).filter(e=>e.link||e.photo).length : 0,
+      });
+
       if (selItems.length === 0) {
+        const d = isL ? (Object.keys(actMap).length ? actMap[Math.max(...Object.keys(actMap).map(Number))] : null) : actMap.single;
+        if (!d) return;
+        const {bc,vc,ec} = rowFor(d);
         sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,"","",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        (d.blogs||[]).forEach((b,i) => { if(b.link) blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]); });
+        (d.virals||[]).forEach((v,i) => { if(v.link||v.photo) viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]); });
+        (d.extras||[]).forEach((e,i) => { if(e.link||e.photo) extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]); });
       } else {
-        selItems.forEach(sel => { sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,s.grade===G.L?(sel.cha+"차"):"",sel.productName,sel.productCode,d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]); });
+        selItems.forEach(sel => {
+          const d = isL ? (actMap[sel.cha] || null) : actMap.single;
+          const {bc,vc,ec} = rowFor(d);
+          sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,isL?(sel.cha+"차"):"",sel.productName,sel.productCode,d?.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        });
+        const seen = new Set();
+        selItems.forEach(sel => {
+          const dedupKey = isL ? sel.cha : "single";
+          if (seen.has(dedupKey)) return; seen.add(dedupKey);
+          const d = isL ? (actMap[sel.cha] || null) : actMap.single;
+          if (!d) return;
+          (d.blogs||[]).forEach((b,i) => { if(b.link) blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]); });
+          (d.virals||[]).forEach((v,i) => { if(v.link||v.photo) viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]); });
+          (d.extras||[]).forEach((e,i) => { if(e.link||e.photo) extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]); });
+        });
       }
-      (d.blogs||[]).forEach((b,i) => { if(b.link) blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]); });
-      (d.virals||[]).forEach((v,i) => { if(v.link||v.photo) viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]); });
-      (d.extras||[]).forEach((e,i) => { if(e.link||e.photo) extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]); });
     }));
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data]) => {
       const ws = XLSX.utils.aoa_to_sheet(data); ws["!cols"] = Array(data[0].length).fill({wch:14}); XLSX.utils.book_append_sheet(wb, ws, name);

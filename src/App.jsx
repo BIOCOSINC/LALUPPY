@@ -24,7 +24,7 @@ const san = k => k.replace(/\//g, "__");
 const db = {
   get: async k => { try { const s = await getDoc(doc(fs, "kv", san(k))); return s.exists() ? JSON.parse(s.data().v) : null; } catch { return null; } },
   set: async (k, v) => { try { await setDoc(doc(fs, "kv", san(k)), { v: JSON.stringify(v), k }); return true; } catch { return false; } },
-  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
+  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
 };
 const ADMIN_CODE = "LALUCELL2025";
 const G = { L: "laroupi", S: "laroupisecret" };
@@ -481,8 +481,14 @@ export default function App() {
       ]).then(([notices, addr, openData, mSetting, mData, dmList]) => {
         setMyNotices(notices || []);
         if (addr) setMyAddress(addr);
-        if (me.grade === G.L) setOpenChaList(openData || []);
-        else setOpenMonthsList(openData || []);
+        if (me.grade === G.L) {
+          const openList = openData || [];
+          setOpenChaList(openList);
+          // 기본 선택 차수(1차)가 오픈 안 되어 있으면, 오픈된 차수 중 가장 낮은 값으로 자동 이동
+          setSelectedCha(prev => (openList.includes(prev) ? prev : (openList.length ? Math.min(...openList) : prev)));
+        } else {
+          setOpenMonthsList(openData || []);
+        }
         setMissionSetting(mSetting ? { targetMode: "all", targetIds: [], ...mSetting } : null);
         setMyMission(mData || null);
         const dms = dmList || [];
@@ -498,7 +504,7 @@ export default function App() {
     if (me && sp === "product") {
       Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota()]);
     }
-  }, [me, sp, selectedCha, selYr, selMo]);
+  }, [me, sp, selectedCha, selYr, selMo, openChaList]);
   useEffect(() => {
     if (sp === "inquiry" && me && myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead)) {
       (async () => {
@@ -554,8 +560,12 @@ export default function App() {
   };
   const loadAvailableProds = async () => {
     if (!me) return;
-    if (me.grade === G.L) setAvailableProds(await db.get("products:laroupi:cha:" + selectedCha) || []);
-    else setAvailableProds(await db.get("products:" + me.grade + ":" + selYr + ":" + selMo) || []);
+    if (me.grade === G.L) {
+      if (!openChaList.includes(selectedCha)) { setAvailableProds([]); return; }
+      setAvailableProds(await db.get("products:laroupi:cha:" + selectedCha) || []);
+    } else {
+      setAvailableProds(await db.get("products:" + me.grade + ":" + selYr + ":" + selMo) || []);
+    }
   };
   const loadMySelections = async () => {
     if (!me) return;
@@ -578,6 +588,11 @@ export default function App() {
   const loadCanSelect = async () => {
     if (!me) return;
     if (me.grade === G.L) {
+      if (!openChaList.includes(selectedCha)) {
+        setCanSelectProduct(false);
+        setCanSelectReason(selectedCha + "차는 아직 오픈되지 않았습니다.");
+        return;
+      }
       if (selectedCha === 1) { setCanSelectProduct(true); setCanSelectReason(""); return; }
       const prevAct = await db.get("activity:" + me.id + ":cha:" + (selectedCha - 1));
       if (!prevAct || prevAct.submitted) { setCanSelectProduct(true); setCanSelectReason(""); }

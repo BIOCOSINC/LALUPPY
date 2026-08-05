@@ -24,7 +24,7 @@ const san = k => k.replace(/\//g, "__");
 const db = {
   get: async k => { try { const s = await getDoc(doc(fs, "kv", san(k))); return s.exists() ? JSON.parse(s.data().v) : null; } catch { return null; } },
   set: async (k, v) => { try { await setDoc(doc(fs, "kv", san(k)), { v: JSON.stringify(v), k }); return true; } catch { return false; } },
-  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
+  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "\uf8ff")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
 };
 const ADMIN_CODE = "LALUCELL2025";
 const G = { L: "laroupi", S: "laroupisecret" };

@@ -42,6 +42,8 @@ const LACHAS = [1, 2, 3, 4, 5, 6];
 const BRAND = { logoUrl: "/logo.png", logoText: "LALUPPY", primary: BRAND_SCALE[800], primaryLight: BRAND_SCALE[200] };
 const BASE_QUOTA = { laroupi: 2, laroupisecret: 1 };
 const MISSION_VIRAL_COUNT = 5;
+const ACT_BLOG_MIN = 2;
+const ACT_VIRAL_MIN = 5;
 const MISSION_VIRAL_MAX = 100;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
 const missionSettingKey = () => "mission:setting:global";
@@ -70,8 +72,8 @@ async function compressImage(file) {
 }
 function blankAct(grade) {
   const virals = Array(5).fill(0).map(() => ({ link: "", photo: null }));
-  if (grade === G.L) return { blogs: [{ link: "" }, { link: "" }], virals, extras: [], submitted: false };
-  return { virals, extras: [], submitted: false };
+  if (grade === G.L) return { blogs: [{ link: "" }, { link: "" }], virals, extras: [], submitted: false, rejectedReason: "" };
+  return { virals, extras: [], submitted: false, rejectedReason: "" };
 }
 function blankMission() {
   return { virals: Array(MISSION_VIRAL_COUNT).fill(0).map(() => ({ link: "", photo: null })), status: null, rejectedReason: "", submittedAt: null };
@@ -186,13 +188,13 @@ function EditMemberModal({ supp, onSave, onClose, existingSupps }) {
     </div>
   );
 }
-function RejectModal({ suppName, onConfirm, onClose }) {
+function RejectModal({ suppName, onConfirm, onClose, itemLabel = "튼특미션" }) {
   const [reason, setReason] = useState("");
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 28, maxWidth: 360, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}><XCircle size={16} style={{verticalAlign:-3,marginRight:6}}/>반려 사유 입력</div>
-        <div style={{ fontSize: 13, color: T.muted, marginBottom: 16 }}>{suppName}님의 튼특미션을 반려합니다.</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 16 }}>{suppName}님의 {itemLabel}을 반려합니다.</div>
         <label style={S.lbl}>반려 사유 *</label>
         <textarea style={{ ...S.inp, minHeight: 80, resize: "vertical" }} placeholder="써포터즈에게 전달될 반려 사유를 입력해 주세요." value={reason} onChange={e => setReason(e.target.value)} />
         <div style={{ display: "flex", gap: 10 }}>
@@ -406,6 +408,7 @@ export default function App() {
   const [missionGradeFilter, setMissionGradeFilter] = useState("전체");
   const [rejectTarget, setRejectTarget] = useState(null);
   const [missionActionMsg, setMissionActionMsg] = useState("");
+  const [actRejectTarget, setActRejectTarget] = useState(null);
   // 관리자 → 회원 메시지 (DM) - 관리자 측
   const [iqSubTab, setIqSubTab] = useState("received");
   const [dmSuppSearch, setDmSuppSearch] = useState("");
@@ -841,9 +844,15 @@ export default function App() {
     if (submit) {
       const missingIdx = act.virals.findIndex(v => (v.link || v.photo) && !v.photo);
       if (missingIdx !== -1) { setSavMsg("⚠️ 바이럴 " + (missingIdx + 1) + "번 사진이 없습니다."); setTimeout(() => setSavMsg(""), 3000); return; }
+      const viralCount = act.virals.filter(v => v.link).length;
+      if (viralCount < ACT_VIRAL_MIN) { setSavMsg("⚠️ 바이럴 " + ACT_VIRAL_MIN + "건을 모두 입력해야 제출할 수 있습니다. (현재 " + viralCount + "건)"); setTimeout(() => setSavMsg(""), 3000); return; }
+      if (isL) {
+        const blogCount = act.blogs.filter(b => b.link).length;
+        if (blogCount < ACT_BLOG_MIN) { setSavMsg("⚠️ 블로그 " + ACT_BLOG_MIN + "건을 모두 입력해야 제출할 수 있습니다. (현재 " + blogCount + "건)"); setTimeout(() => setSavMsg(""), 3000); return; }
+      }
     }
     setSaving(true);
-    const data = { ...act, ...(isL ? { cha: selectedActCha } : { year: yr, month: mo }), submitted: submit ? true : (act.submitted || false) };
+    const data = { ...act, ...(isL ? { cha: selectedActCha } : { year: yr, month: mo }), submitted: submit ? true : (act.submitted || false), rejectedReason: submit ? "" : (act.rejectedReason || "") };
     const key = isL ? "activity:" + me.id + ":cha:" + selectedActCha : "activity:" + me.id + ":" + yr + ":" + mo;
     const ok = await db.set(key, data);
     if (ok) { setAct(data); loadMySaved(me.id); }
@@ -1013,6 +1022,14 @@ export default function App() {
     const acts = (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean);
     acts.sort((a, b) => (b.cha||0) - (a.cha||0) || (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0));
     setViewActs(acts); setLoadingVA(false);
+  };
+  const rejectActivity = async (a, reason) => {
+    const isL = viewSupp.grade === G.L;
+    const key = isL ? "activity:" + viewSupp.id + ":cha:" + a.cha : "activity:" + viewSupp.id + ":" + a.year + ":" + a.month;
+    const updated = { ...a, submitted: false, rejectedReason: reason };
+    const ok = await db.set(key, updated);
+    if (ok) setViewActs(prev => prev.map(x => x === a ? updated : x));
+    setActRejectTarget(null);
   };
   const loadAllInquiries = async () => {
     setLoadingIq(true);
@@ -1509,6 +1526,13 @@ export default function App() {
               <span style={S.tag(me.grade)}>{GN[me.grade]}</span>
               {act.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,fontWeight:700,background:"#E8F5E9",color:"#2E7D32"}}>✅ 제출완료</span>}
             </div>
+            {act.rejectedReason&&!act.submitted&&(
+              <div style={{background:"#FDECEA",border:"1.5px solid #C0392B",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+                <div style={{fontWeight:700,fontSize:13,color:"#C0392B",marginBottom:4}}>❌ 관리자 반려 사유</div>
+                <div style={{fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{act.rejectedReason}</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:6}}>내용을 수정하여 다시 제출해 주세요.</div>
+              </div>
+            )}
             {isL&&(
               <div style={S.card}>
                 <div style={S.h2}><PenLine size={16} style={{verticalAlign:-3,marginRight:6}}/>블로그</div>
@@ -1751,6 +1775,7 @@ export default function App() {
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
       {editTarget&&<EditMemberModal supp={editTarget} existingSupps={supps} onSave={handleEditSave} onClose={()=>setEditTarget(null)}/>}
       {rejectTarget&&<RejectModal suppName={rejectTarget.suppName} onConfirm={reason=>rejectMission(rejectTarget,reason)} onClose={()=>setRejectTarget(null)}/>}
+      {actRejectTarget&&<RejectModal suppName={viewSupp?.nick||""} itemLabel="활동 제출" onConfirm={reason=>rejectActivity(actRejectTarget,reason)} onClose={()=>setActRejectTarget(null)}/>}
       <div style={{background:T.pc,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <Logo dark/><span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>관리자</span>
         <button onClick={()=>{setView("login");setLf(f=>({...f,code:""}));sessionStorage.clear();}} style={S.btn("rgba(255,255,255,0.15)","#fff",true)}><LogOut size={13} style={{verticalAlign:-2,marginRight:4}}/>로그아웃</button>
@@ -2154,8 +2179,17 @@ export default function App() {
                 <div key={(a.year||"")+(a.month||"")+(a.cha||"")} style={S.card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                     <div style={{fontWeight:800,fontSize:15,color:T.pc}}>{a.cha?a.cha+"차":a.year+"년 "+a.month+"월"}</div>
-                    {a.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {a.submitted&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>✅ 제출완료</span>}
+                      {!a.submitted&&a.rejectedReason&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:10,background:"#FDECEA",color:"#C0392B",fontWeight:700}}>❌ 반려됨</span>}
+                      {a.submitted&&<button onClick={()=>setActRejectTarget(a)} style={S.btn("#C0392B",undefined,true)}>❌ 반려</button>}
+                    </div>
                   </div>
+                  {!a.submitted&&a.rejectedReason&&(
+                    <div style={{background:"#FDECEA",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#C0392B"}}>
+                      반려 사유: {a.rejectedReason}
+                    </div>
+                  )}
                   {a.blogs&&a.blogs.some(b=>b.link)&&(
                     <div style={{marginBottom:14}}>
                       <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📝 블로그 ({a.blogs.filter(b=>b.link).length}건)</div>

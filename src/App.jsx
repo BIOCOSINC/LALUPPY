@@ -24,12 +24,11 @@ const san = k => k.replace(/\//g, "__");
 const db = {
   get: async k => { try { const s = await getDoc(doc(fs, "kv", san(k))); return s.exists() ? JSON.parse(s.data().v) : null; } catch { return null; } },
   set: async (k, v) => { try { await setDoc(doc(fs, "kv", san(k)), { v: JSON.stringify(v), k }); return true; } catch { return false; } },
-  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "\uf8ff")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
+  list: async p => { try { const q = query(collection(fs, "kv"), where("k", ">=", p), where("k", "<", p + "")); const s = await getDocs(q); return s.docs.map(d => d.data().k); } catch { return []; } }
 };
 const ADMIN_CODE = "LALUCELL2025";
 const G = { L: "laroupi", S: "laroupisecret" };
 const GN = { laroupi: "라루피", laroupisecret: "라루피시크릿" };
-// Figma "Simple Design System" — Brand color primitives (라루셀 그린 10단계)
 const BRAND_SCALE = {
   100: "#F2F6F5", 200: "#D9E3E1", 300: "#B3C8C3", 400: "#80A39C", 500: "#4D7E74",
   600: "#266256", 700: "#0D4F42", 800: "#004638", 900: "#00382D", 1000: "#002A22",
@@ -78,7 +77,6 @@ function blankAct(grade) {
 function blankMission() {
   return { virals: Array(MISSION_VIRAL_COUNT).fill(0).map(() => ({ link: "", photo: null })), status: null, rejectedReason: "", submittedAt: null };
 }
-// Figma Foundations 기준 spacing / radius / typography 스케일
 const SP = { 0: 0, 50: 2, 100: 4, 150: 6, 200: 8, 300: 12, 400: 16, 600: 24, 800: 32, 1200: 48 };
 const R = { sm: 4, md: 8, lg: 16, full: 9999 };
 const FZ = { xs: 12, sm: 14, base: 16, subheading: 20, heading: 24 };
@@ -347,6 +345,8 @@ export default function App() {
   const [canSelectReason, setCanSelectReason] = useState("");
   const [selConfirmProd, setSelConfirmProd] = useState(null);
   const [myQuota, setMyQuota] = useState(BASE_QUOTA[G.L]);
+  const [myDelivered, setMyDelivered] = useState(false);
+  const [draftSelections, setDraftSelections] = useState([]);
   // 튼특미션 (써포터즈)
   const [myMission, setMyMission] = useState(null);
   const [missionSetting, setMissionSetting] = useState(null);
@@ -377,6 +377,7 @@ export default function App() {
   const [loadingVA, setLoadingVA] = useState(false);
   const [actYear, setActYear] = useState(new Date().getFullYear());
   const [actMonth, setActMonth] = useState(new Date().getMonth() + 1);
+  const [actCha, setActCha] = useState(1);
   const [actGen, setActGen] = useState("전체");
   const [actGrade, setActGrade] = useState("전체");
   const [actStatusFilter, setActStatusFilter] = useState("all");
@@ -397,6 +398,8 @@ export default function App() {
   const [newOpenMonth, setNewOpenMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2 });
   const [openRefresh, setOpenRefresh] = useState(0);
   const [prodGen, setProdGen] = useState("");
+  const [orderList, setOrderList] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   // 튼특미션 설정 (관리자) - 라루피/시크릿 공통(통합)
   const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
   const [missionExcelPreview, setMissionExcelPreview] = useState([]);
@@ -435,6 +438,8 @@ export default function App() {
   const [loadingEQ, setLoadingEQ] = useState(false);
   const extraQuotaKey = (grade, cha, year, month) =>
     grade === G.L ? "extraQuota:laroupi:cha:" + cha : "extraQuota:" + grade + ":" + year + ":" + month;
+  const deliveryKey = (grade, uid, cha, year, month) =>
+    grade === G.L ? "delivered:" + uid + ":cha:" + cha : "delivered:" + uid + ":" + year + ":" + month;
   const loadExtraQuota = async () => {
     setLoadingEQ(true);
     const key = extraQuotaKey(prodGrade, prodCha, prodYear, prodMonth);
@@ -453,6 +458,27 @@ export default function App() {
     await db.set(key, data);
     await loadExtraQuota();
   };
+  const loadOrders = async () => {
+    setLoadingOrders(true);
+    const isLAdmin = prodGrade === G.L;
+    const targetSupps = supps.filter(s => s.grade === prodGrade);
+    const results = await Promise.all(targetSupps.map(async s => {
+      const keys = isLAdmin
+        ? await db.list("selection:" + s.id + ":cha:" + prodCha + ":slot:")
+        : await db.list("selection:" + s.id + ":" + prodYear + ":" + prodMonth + ":slot:");
+      if (!keys.length) return null;
+      const items = (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean).sort((a, b) => (a.slot || 1) - (b.slot || 1));
+      if (!items.length) return null;
+      const delivered = !!(await db.get(deliveryKey(prodGrade, s.id, prodCha, prodYear, prodMonth)));
+      return { suppId: s.id, suppName: s.gen + " · " + s.nick, items, delivered };
+    }));
+    setOrderList(results.filter(Boolean));
+    setLoadingOrders(false);
+  };
+  const toggleDelivered = async (suppId, current) => {
+    await db.set(deliveryKey(prodGrade, suppId, prodCha, prodYear, prodMonth), !current);
+    await loadOrders();
+  };
   const loadMyQuota = async () => {
     if (!me) return;
     const base = BASE_QUOTA[me.grade] || 1;
@@ -462,6 +488,12 @@ export default function App() {
     const data = await db.get(extraKey) || {};
     const missionExtra = await db.get("extraQuota:mission:" + me.grade + ":" + me.id) || 0;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
+  };
+  const loadMyDelivered = async () => {
+    if (!me) return;
+    const key = deliveryKey(me.grade, me.id, selectedCha, selYr, selMo);
+    const d = await db.get(key);
+    setMyDelivered(!!d);
   };
   useEffect(() => {
     if (view === "admin") {
@@ -487,7 +519,6 @@ export default function App() {
         if (me.grade === G.L) {
           const openList = openData || [];
           setOpenChaList(openList);
-          // 기본 선택 차수(1차)가 오픈 안 되어 있으면, 오픈된 차수 중 가장 낮은 값으로 자동 이동
           setSelectedCha(prev => (openList.includes(prev) ? prev : (openList.length ? Math.min(...openList) : prev)));
         } else {
           setOpenMonthsList(openData || []);
@@ -505,9 +536,14 @@ export default function App() {
   }, [me]);
   useEffect(() => {
     if (me && sp === "product") {
-      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota()]);
+      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota(), loadMyDelivered()]);
     }
   }, [me, sp, selectedCha, selYr, selMo, openChaList]);
+  useEffect(() => {
+    if (!myDelivered) {
+      setDraftSelections(mySelections.map(s => ({ productId: s.productId, productName: s.productName, productCode: s.productCode })));
+    }
+  }, [mySelections, myDelivered]);
   useEffect(() => {
     if (sp === "inquiry" && me && myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead)) {
       (async () => {
@@ -527,10 +563,10 @@ export default function App() {
     }
   }, [sp]);
   useEffect(() => {
-    if (atab === "products" && view === "admin") { loadAdminProds(); loadExtraQuota(); }
+    if (atab === "products" && view === "admin") { loadAdminProds(); loadExtraQuota(); loadOrders(); }
   }, [atab, prodGrade, prodYear, prodMonth, prodCha]);
   useEffect(() => {
-    if (atab === "products" && view === "admin" && supps.length > 0) loadExtraQuota();
+    if (atab === "products" && view === "admin" && supps.length > 0) { loadExtraQuota(); loadOrders(); }
   }, [prodGrade, prodCha, prodYear, prodMonth, supps.length]);
   const loadMySaved = async uid => {
     if (me?.grade === G.L) {
@@ -622,8 +658,6 @@ export default function App() {
     if (!list.length) return;
     setLoadingSum(true);
     const entries = await Promise.all(list.map(async s => {
-      // 라루피(L)는 "activity:{id}:cha:{cha}", 라루피시크릿(S)은 "activity:{id}:{year}:{month}" 형식으로 저장되므로
-      // 등급을 미리 구분하지 않고 해당 회원의 모든 activity 키를 가져온 뒤 형식별로 분류한다.
       const keys = await db.list("activity:" + s.id + ":");
       const acts = await Promise.all(keys.map(k => db.get(k)));
       const monthData = {}, chaData = {};
@@ -652,7 +686,6 @@ export default function App() {
     setMissionSettingMsg(ok ? "✅ 미션 설정 저장 완료!" : "저장 실패");
     setTimeout(() => setMissionSettingMsg(""), 2500);
   };
-  // 튼특미션 대상자: 엑셀 양식 다운로드
   const downloadMissionTargetTemplate = () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([["기수", "닉네임"], ["1기", "예시닉네임"]]);
@@ -660,7 +693,6 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, ws, "미션대상자");
     XLSX.writeFile(wb, "튼특미션_대상자_양식.xlsx");
   };
-  // 튼특미션 대상자: 엑셀 업로드로 회원 매칭
   const handleMissionExcelUpload = async file => {
     setMissionExcelErr(""); setMissionExcelPreview([]);
     try {
@@ -669,7 +701,6 @@ export default function App() {
       if (!rows.length) { setMissionExcelErr("시트에서 데이터를 찾지 못했습니다. (빈 파일이거나 첫 시트가 비어있습니다)"); return; }
       const parsed = rows
         .map(r => ({ gen: String(r[0] ?? "").trim(), nick: String(r[1] ?? "").trim() }))
-        // 헤더 행("기수"/"닉네임" 텍스트 그대로인 행)과 완전히 빈 행은 제외
         .filter(r => r.gen && r.nick && r.gen !== "기수" && r.nick !== "닉네임")
         .map(r => {
           const found = supps.find(s => s.gen === r.gen && s.nick === r.nick);
@@ -682,7 +713,6 @@ export default function App() {
       setMissionExcelPreview(parsed);
     } catch (e) { setMissionExcelErr("파일을 읽을 수 없습니다. (" + (e?.message || "알 수 없는 오류") + ")"); }
   };
-  // 튼특미션 대상자: 엑셀 매칭 결과를 targetIds에 반영
   const applyMissionExcelTargets = () => {
     const matchedIds = missionExcelPreview.filter(p => p.suppId).map(p => p.suppId);
     setMissionSettingForm(s => {
@@ -692,7 +722,6 @@ export default function App() {
     });
     setMissionExcelPreview([]);
   };
-  // 튼특미션: 전체 현황 로드 (관리자)
   const loadAllMissions = async () => {
     setLoadingMissions(true);
     const list = await db.get("supporters") || [];
@@ -704,7 +733,6 @@ export default function App() {
     setAllMissions(results.filter(Boolean));
     setLoadingMissions(false);
   };
-  // 튼특미션: 승인
   const approveMission = async (item) => {
     if (item.status === "approved") return;
     const updated = { ...item, status: "approved", rejectedReason: "" };
@@ -714,7 +742,6 @@ export default function App() {
     setMissionActionMsg("✅ " + item.suppName + " 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
-  // 튼특미션: 반려
   const rejectMission = async (item, reason) => {
     const supp = supps.find(s => s.id === item.suppId);
     if (!supp) return;
@@ -728,7 +755,6 @@ export default function App() {
     setMissionActionMsg("❌ " + item.suppName + " 반려 처리 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
-  // 튼특미션: 임시저장
   const saveMissionDraft = async () => {
     const cur = myMission || blankMission();
     setMissionSaving(true);
@@ -737,7 +763,6 @@ export default function App() {
     setTimeout(() => setMissionMsg(""), 2500);
     setMissionSaving(false);
   };
-  // 튼특미션: 써포터즈 제출
   const submitMission = async () => {
     const cur = myMission || blankMission();
     const filled = cur.virals.filter(v => v.link || v.photo);
@@ -769,21 +794,18 @@ export default function App() {
       return { ...base, virals: base.virals.map((x, j) => j === i ? { ...x, [f]: v } : x) };
     });
   };
-  // 튼특미션 바이럴 삭제
   const delMissionViral = i => {
     setMyMission(m => {
       const base = m || blankMission();
       return { ...base, virals: base.virals.filter((_, j) => j !== i) };
     });
   };
-  // 튼특미션 바이럴 추가
   const addMissionViral = () => {
     setMyMission(m => {
       const base = m || blankMission();
       return { ...base, virals: [...base.virals, { link: "", photo: null }] };
     });
   };
-  // 관리자 메시지(DM) - 써포터즈 측 함수
   const appendDmMessage = async (threadId, text) => {
     const dms = await db.get(dmKey(me.id)) || [];
     const now = Date.now();
@@ -873,24 +895,39 @@ export default function App() {
     if (!window.daum) { alert("주소 검색 서비스를 불러오는 중입니다."); return; }
     new window.daum.Postcode({ oncomplete: data => setMyAddress(a => ({ ...a, zonecode: data.zonecode, address: data.address })) }).open();
   };
-  const handleSelectProduct = prod => { if (!canSelectProduct) return; setSelConfirmProd(prod); };
-  const confirmProductSelection = async () => {
-    const prod = selConfirmProd; if (!prod) return;
+  const toggleDraftProduct = prod => {
+    if (myDelivered || !canSelectProduct) return;
+    setDraftSelections(prev => {
+      const exists = prev.some(x => x.productId === prod.id);
+      if (exists) return prev.filter(x => x.productId !== prod.id);
+      if (prev.length >= myQuota) return prev;
+      return [...prev, { productId: prod.id, productName: prod.name, productCode: prod.code }];
+    });
+  };
+  const submitDraftSelections = async () => {
+    if (!me) return;
+    if (draftSelections.length !== myQuota) {
+      setSelMsg("⚠️ 정확히 " + myQuota + "개를 모두 선택해야 신청할 수 있습니다. (현재 " + draftSelections.length + "/" + myQuota + ")");
+      setTimeout(() => setSelMsg(""), 3000);
+      return;
+    }
+    const isL = me.grade === G.L;
+    const prefix = isL ? "selection:" + me.id + ":cha:" + selectedCha + ":slot:" : "selection:" + me.id + ":" + selYr + ":" + selMo + ":slot:";
+    const oldCount = mySelections.length;
     const now = new Date();
     const dateStr = formatDate(now);
-    const slot = mySelections.length + 1;
-    let key, sel;
-    if (me.grade === G.L) {
-      key = "selection:" + me.id + ":cha:" + selectedCha + ":slot:" + slot;
-      sel = { productId: prod.id, productName: prod.name, productCode: prod.code, cha: selectedCha, selYear: now.getFullYear(), selMonth: now.getMonth() + 1, selDate: dateStr, slot };
-    } else {
-      key = "selection:" + me.id + ":" + selYr + ":" + selMo + ":slot:" + slot;
-      sel = { productId: prod.id, productName: prod.name, productCode: prod.code, year: selYr, month: selMo, selDate: dateStr, slot };
+    for (let i = draftSelections.length + 1; i <= oldCount; i++) {
+      await db.set(prefix + i, null);
     }
-    const ok = await db.set(key, sel);
-    setSelConfirmProd(null);
-    if (ok) { await loadMySelections(); setSelMsg("제품이 신청되었습니다! ✓ (" + slot + "/" + myQuota + "건)"); }
-    else setSelMsg("저장에 실패했습니다.");
+    await Promise.all(draftSelections.map((p, idx) => {
+      const slot = idx + 1;
+      const sel = isL
+        ? { productId: p.productId, productName: p.productName, productCode: p.productCode, cha: selectedCha, selYear: now.getFullYear(), selMonth: now.getMonth() + 1, selDate: dateStr, slot }
+        : { productId: p.productId, productName: p.productName, productCode: p.productCode, year: selYr, month: selMo, selDate: dateStr, slot };
+      return db.set(prefix + slot, sel);
+    }));
+    await loadMySelections();
+    setSelMsg("✅ " + draftSelections.length + "개 제품 신청 완료!");
     setTimeout(() => setSelMsg(""), 2500);
   };
   const addProduct = async () => {
@@ -1049,7 +1086,6 @@ export default function App() {
     } else setReplyMsg("등록에 실패했습니다.");
     setTimeout(() => setReplyMsg(""), 2500);
   };
-  // 관리자 → 회원 메시지(DM) 함수
   const loadAllDmThreads = async () => {
     setLoadingDmThreads(true);
     const list = await db.get("supporters") || [];
@@ -1151,11 +1187,11 @@ export default function App() {
       const addr = await db.get("address:" + s.id);
       const addrData = addr || {};
       let selItems = [];
-      let actMap = {}; // L: {cha:data}, S: {single:data}
+      let actMap = {};
       if (isL) {
         const slotKeys = await db.list("selection:" + s.id + ":cha:");
         const allSels = (await Promise.all(slotKeys.map(k => db.get(k)))).filter(Boolean);
-        selItems = allSels.filter(cs => cs.selYear === actYear && cs.selMonth === actMonth);
+        selItems = allSels.filter(cs => cs.cha === actCha);
         const chaKeys = await db.list("activity:" + s.id + ":cha:");
         const chaActs = await Promise.all(chaKeys.map(k => db.get(k)));
         chaKeys.forEach((k, i) => { if (chaActs[i]) actMap[+k.split(":")[3]] = chaActs[i]; });
@@ -1167,18 +1203,16 @@ export default function App() {
       }
       const hasAnyAct = isL ? Object.keys(actMap).length > 0 : !!actMap.single;
       if (!hasAnyAct && selItems.length === 0) return;
-
       const rowFor = d => ({
         bc: d ? (d.blogs||[]).filter(b=>b.link).length : 0,
         vc: d ? (d.virals||[]).filter(v=>v.link||v.photo).length : 0,
         ec: d ? (d.extras||[]).filter(e=>e.link||e.photo).length : 0,
       });
-
       if (selItems.length === 0) {
-        const d = isL ? (Object.keys(actMap).length ? actMap[Math.max(...Object.keys(actMap).map(Number))] : null) : actMap.single;
+        const d = isL ? (actMap[actCha] || null) : actMap.single;
         if (!d) return;
         const {bc,vc,ec} = rowFor(d);
-        sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,"","",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+        sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),isL?"":actYear,isL?"":actMonth,isL?(actCha+"차"):"","",d.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
         (d.blogs||[]).forEach((b,i) => { if(b.link) blog.push([s.gen,s.nick,grade,actYear,actMonth,i+1,b.link]); });
         (d.virals||[]).forEach((v,i) => { if(v.link||v.photo) viral.push([s.gen,s.nick,grade,actYear,actMonth,i+1,v.link||"",v.photo?"O":"X"]); });
         (d.extras||[]).forEach((e,i) => { if(e.link||e.photo) extra.push([s.gen,s.nick,grade,actYear,actMonth,i+1,e.link||"",e.photo?"O":"X"]); });
@@ -1186,7 +1220,7 @@ export default function App() {
         selItems.forEach(sel => {
           const d = isL ? (actMap[sel.cha] || null) : actMap.single;
           const {bc,vc,ec} = rowFor(d);
-          sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),actYear,actMonth,isL?(sel.cha+"차"):"",sel.productName,sel.productCode,d?.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
+          sum.push([s.gen,s.nick,grade,addrData.name||"",addrData.phone||"",addrData.zonecode||"",[addrData.address,addrData.addressDetail].filter(Boolean).join(" "),isL?"":actYear,isL?"":actMonth,isL?(sel.cha+"차"):"",sel.productName,sel.productCode,d?.submitted?"제출완료":"미제출",bc+vc+ec,bc,vc,ec]);
         });
         const seen = new Set();
         selItems.forEach(sel => {
@@ -1203,7 +1237,8 @@ export default function App() {
     [["활동요약",sum],["블로그",blog],["바이럴",viral],["기타",extra]].forEach(([name,data]) => {
       const ws = XLSX.utils.aoa_to_sheet(data); ws["!cols"] = Array(data[0].length).fill({wch:14}); XLSX.utils.book_append_sheet(wb, ws, name);
     });
-    XLSX.writeFile(wb, "LALUPPY_활동내역_"+actYear+"년"+actMonth+"월_"+(actGen==="전체"?"전체기수":actGen)+"_"+(actGrade==="전체"?"전체":GN[actGrade])+".xlsx");
+    const actPeriodLabel = actGrade===G.L ? actCha+"차" : actGrade===G.S ? actYear+"년"+actMonth+"월" : "라루피"+actCha+"차_시크릿"+actYear+"년"+actMonth+"월";
+    XLSX.writeFile(wb, "LALUPPY_활동내역_"+actPeriodLabel+"_"+(actGen==="전체"?"전체기수":actGen)+"_"+(actGrade==="전체"?"전체":GN[actGrade])+".xlsx");
     setDownloadingAct(false);
   };
   const downloadSelectionExcel = async () => {
@@ -1216,14 +1251,14 @@ export default function App() {
       await Promise.all(supps.filter(s => s.grade===G.L && (actGen==="전체"||s.gen===actGen)).map(async s => {
         const allKeys = await db.list("selection:"+s.id+":cha:");
         const allSels = (await Promise.all(allKeys.map(k=>db.get(k)))).filter(Boolean);
-        const filtered = allSels.filter(sel => sel.selYear===actYear && sel.selMonth===actMonth);
+        const filtered = allSels.filter(sel => sel.cha===actCha);
         if (!filtered.length) return;
         const addr = await db.get("address:"+s.id); const a = addr||{};
         filtered.sort((x,y)=>(x.slot||1)-(y.slot||1)).forEach(sel => {
           rows.push([s.gen,s.nick,GN[s.grade],a.name||"",a.phone||"",a.zonecode||"",[a.address,a.addressDetail].filter(Boolean).join(" "),sel.cha+"차",sel.slot||1,sel.productName,sel.productCode,sel.selDate||""]);
         });
       }));
-      if (rows.length>1) { const ws=XLSX.utils.aoa_to_sheet(rows); ws["!cols"]=Array(rows[0].length).fill({wch:14}); XLSX.utils.book_append_sheet(wb,ws,"라루피_"+actYear+"년"+actMonth+"월"); }
+      if (rows.length>1) { const ws=XLSX.utils.aoa_to_sheet(rows); ws["!cols"]=Array(rows[0].length).fill({wch:14}); XLSX.utils.book_append_sheet(wb,ws,"라루피_"+actCha+"차"); }
     }
     if (doSecret) {
       const rows = [["기수","닉네임","등급","수령인","연락처","우편번호","주소","년도","월","슬롯","제품명","제품코드","신청날짜"]];
@@ -1238,8 +1273,9 @@ export default function App() {
       }));
       if (rows.length>1) { const ws=XLSX.utils.aoa_to_sheet(rows); ws["!cols"]=Array(rows[0].length).fill({wch:14}); XLSX.utils.book_append_sheet(wb,ws,"시크릿_"+actYear+"년"+actMonth+"월"); }
     }
-    if (wb.SheetNames.length===0) { const ws=XLSX.utils.aoa_to_sheet([["해당 월 신청된 제품이 없습니다."]]); XLSX.utils.book_append_sheet(wb,ws,"결과없음"); }
-    XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+actYear+"년"+actMonth+"월_"+(actGen==="전체"?"전체기수":actGen)+"_"+(actGrade==="전체"?"전체":GN[actGrade])+".xlsx");
+    if (wb.SheetNames.length===0) { const ws=XLSX.utils.aoa_to_sheet([["해당 기간 신청된 상품이 없습니다."]]); XLSX.utils.book_append_sheet(wb,ws,"결과없음"); }
+    const selPeriodLabel = actGrade===G.L ? actCha+"차" : actGrade===G.S ? actYear+"년"+actMonth+"월" : "라루피"+actCha+"차_시크릿"+actYear+"년"+actMonth+"월";
+    XLSX.writeFile(wb,"LALUPPY_신청상품취합_"+selPeriodLabel+"_"+(actGen==="전체"?"전체기수":actGen)+"_"+(actGrade==="전체"?"전체":GN[actGrade])+".xlsx");
     setDownloadingSel(false);
   };
   const photoField = (src, setter, required=false) => (
@@ -1257,33 +1293,6 @@ export default function App() {
       )}
     </div>
   );
-  const ConfirmModal = () => {
-    if (!selConfirmProd) return null;
-    const isL = me?.grade === G.L;
-    const nextSlot = mySelections.length + 1;
-    return (
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-        <div style={{background:T.card,borderRadius:18,padding:28,maxWidth:340,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.18)"}}>
-          <div style={{textAlign:"center",marginBottom:20}}>
-            <div style={{width:56,height:56,borderRadius:"50%",background:T.pcL,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px"}}><ShoppingBag size={26} color={T.pc}/></div>
-            <div style={{fontWeight:800,fontSize:17,marginBottom:6}}>제품 신청 확인</div>
-            <div style={{fontSize:13,color:T.muted,lineHeight:1.6}}>신청하시겠습니까?<br/>신청 후 변경은 불가능합니다.</div>
-          </div>
-          <div style={{background:T.pcL,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
-            <div style={{fontWeight:800,fontSize:15,color:T.pc,marginBottom:4}}>{selConfirmProd.name}</div>
-            <div style={{fontSize:12,color:T.muted}}>제품 코드: {selConfirmProd.code}</div>
-            <div style={{fontSize:12,color:T.muted,marginTop:4}}>
-              {isL?selectedCha+"차 신청":selYr+"년 "+selMo+"월 신청"} · {nextSlot}/{myQuota}번째 신청
-            </div>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={()=>setSelConfirmProd(null)} style={{...S.btn("#EEE8E0",T.text),flex:1}}>취소</button>
-            <button onClick={confirmProductSelection} style={{...S.btn(T.pc),flex:2}}>✅ 최종 신청</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
   // ── LOGIN
   if (view === "login") return (
     <div style={{minHeight:"100vh",background:"radial-gradient(120% 100% at 50% 0%, "+T.pcTertiary+" 0%, "+T.bg+" 55%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Noto Sans KR',sans-serif",padding:16}}>
@@ -1345,7 +1354,6 @@ export default function App() {
   // ── SUPPORTER
   if (view === "supporter" && me) {
     const isL = me.grade === G.L;
-    const canAddMore = canSelectProduct && mySelections.length < myQuota;
     const missionTargeted = !missionSetting || missionSetting.targetMode !== "selected" || (missionSetting.targetIds || []).includes(me.id);
     const isMissionOpen = missionSetting && missionSetting.isOpen && missionTargeted;
     const missionDeadline = missionSetting?.deadline || "";
@@ -1353,7 +1361,6 @@ export default function App() {
     const hasUnreadDm = myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead);
     return (
       <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
-        <ConfirmModal />
         {popupDm && <DmPopupModal thread={popupDm} onReply={replyDmFromPopup} onClose={closeDmPopup} sending={dmReplySendingId === popupDm.id} />}
         {!popupDm && popupIq && <InquiryReplyPopupModal iq={popupIq} onClose={closeIqPopup} />}
         <div style={{background:T.card,borderBottom:"1px solid "+T.border,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
@@ -1599,12 +1606,16 @@ export default function App() {
                 ⚠️ {canSelectReason}
                 <div style={{marginTop:8}}><button onClick={()=>setSp("months")} style={S.btn("#C0392B",undefined,true)}>활동 입력하러 가기 →</button></div>
               </div>
+            ):myDelivered?(
+              <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
+                🚚 배송완료 처리되었습니다. 다음 {isL?"차수":"달"}가 오픈될 때까지 신청을 변경할 수 없습니다.
+              </div>
             ):(
               mySelections.length>=myQuota
-                ?<div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>✅ {myQuota}건 신청 완료!</div>
-                :<div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
-                  ✅ 제품 신청 가능 · {mySelections.length}/{myQuota}건 신청됨
-                  {myQuota>BASE_QUOTA[me.grade]&&<span style={{marginLeft:6,fontSize:11,background:"#C8E6C9",borderRadius:6,padding:"1px 7px"}}>+{myQuota-BASE_QUOTA[me.grade]} 추가 허용</span>}
+                ?<div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>✅ {myQuota}건 신청 완료! (배송 전까지 자유롭게 변경 가능)</div>
+                :<div style={{padding:"12px 14px",background:"#FFF3E0",borderRadius:10,marginBottom:14,fontSize:13,color:"#B8860B",fontWeight:600}}>
+                  📝 {myQuota}개를 모두 선택해야 신청이 완료됩니다 · 현재 {draftSelections.length}/{myQuota}개 선택됨
+                  {myQuota>BASE_QUOTA[me.grade]&&<span style={{marginLeft:6,fontSize:11,background:"#FFE0B2",borderRadius:6,padding:"1px 7px"}}>+{myQuota-BASE_QUOTA[me.grade]} 추가 허용</span>}
                 </div>
             )}
             <div style={S.card}>
@@ -1629,43 +1640,47 @@ export default function App() {
                   <select value={selMo} onChange={e=>setSelMo(+e.target.value)} style={{...S.sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
                 </div>
               )}
-              {mySelections.length>0&&(
-                <div style={{marginBottom:16}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:8}}>신청된 제품</div>
+              {myDelivered?(
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:8}}>신청(배송완료)된 제품</div>
                   {mySelections.map((sel,i)=>(
-                    <div key={i} style={{padding:"10px 14px",background:T.pcL,borderRadius:8,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div key={i} style={{padding:"10px 14px",background:"#F0F0F0",borderRadius:8,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
-                        <div style={{fontSize:11,color:T.pc,fontWeight:700,marginBottom:1}}>{i+1}번째 신청 · {sel.selDate||""}</div>
+                        <div style={{fontSize:11,color:T.muted,fontWeight:700,marginBottom:1}}>{i+1}번째 · {sel.selDate||""}</div>
                         <div style={{fontWeight:700,fontSize:13}}>{sel.productName}</div>
                         <div style={{fontSize:11,color:T.muted}}>코드: {sel.productCode}</div>
                       </div>
-                      <span style={{fontSize:18,color:T.pc}}>✓</span>
+                      <span style={{fontSize:18,color:"#2E7D32"}}>🚚</span>
                     </div>
                   ))}
                 </div>
-              )}
-              {canAddMore&&(<>
-                <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:10}}>{mySelections.length+1}번째 제품을 선택하세요</div>
+              ):(<>
+                <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:10}}>
+                  제품을 선택하세요 ({draftSelections.length}/{myQuota}) · 배송 전까지 자유롭게 변경할 수 있습니다
+                </div>
                 {availableProds.length===0
                   ?<div style={{textAlign:"center",color:T.muted,padding:32,fontSize:13}}>선택 가능한 제품이 없습니다.</div>
-                  :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  :<div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
                     {availableProds.map(p=>{
-                      const alreadySelected=mySelections.some(s=>s.productId===p.id);
+                      const picked=draftSelections.some(s=>s.productId===p.id);
+                      const full=draftSelections.length>=myQuota;
+                      const disabled=!picked&&full;
                       return (
-                        <div key={p.id} onClick={()=>!alreadySelected&&handleSelectProduct(p)}
-                          style={{padding:"14px 16px",borderRadius:10,border:"2px solid "+(alreadySelected?"#CCC":T.border),background:alreadySelected?"#F5F5F5":T.card,cursor:alreadySelected?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:alreadySelected?0.5:1}}>
+                        <div key={p.id} onClick={()=>!disabled&&toggleDraftProduct(p)}
+                          style={{padding:"14px 16px",borderRadius:10,border:"2px solid "+(picked?T.pc:disabled?"#EEE":T.border),background:picked?T.pcL:disabled?"#F5F5F5":T.card,cursor:disabled?"not-allowed":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:disabled?0.5:1}}>
                           <div><div style={{fontWeight:700,fontSize:14}}>{p.name}</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>코드: {p.code}</div></div>
-                          {alreadySelected
-                            ?<span style={{fontSize:11,color:T.muted,padding:"3px 8px",borderRadius:6,background:"#E8E8E8"}}>이미 신청됨</span>
-                            :<span style={{fontSize:11,color:T.pc,padding:"3px 8px",borderRadius:6,background:T.pcL}}>신청하기</span>}
+                          {picked
+                            ?<span style={{fontSize:11,color:T.pc,padding:"3px 8px",borderRadius:6,background:"#fff",fontWeight:700}}>✓ 선택됨 (취소)</span>
+                            :<span style={{fontSize:11,color:disabled?T.muted:T.pc,padding:"3px 8px",borderRadius:6,background:disabled?"#E8E8E8":T.pcL}}>{disabled?"정원마감":"선택하기"}</span>}
                         </div>
                       );
                     })}
                   </div>}
+                <button onClick={submitDraftSelections} disabled={draftSelections.length!==myQuota}
+                  style={{...S.btn(draftSelections.length===myQuota?T.pc:"#CCC"),width:"100%",cursor:draftSelections.length===myQuota?"pointer":"not-allowed"}}>
+                  {draftSelections.length===myQuota?"✅ "+myQuota+"개 신청하기":"⚠️ "+myQuota+"개를 모두 선택해 주세요 ("+draftSelections.length+"/"+myQuota+")"}
+                </button>
               </>)}
-              {!canAddMore&&mySelections.length>0&&canSelectProduct&&(
-                <div style={{textAlign:"center",padding:"14px 0",fontSize:13,color:T.muted}}>최대 신청 건수({myQuota}건)를 모두 신청하셨습니다.</div>
-              )}
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:T.pc}}>{selMsg}</div>}
             </div>
           </>)}
@@ -2078,6 +2093,26 @@ export default function App() {
               </div>
             ))}
           </div>
+          <div style={S.card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={S.h2}><Package size={16} style={{verticalAlign:-3,marginRight:6}}/>신청 현황 &amp; 배송완료 처리</div>
+              <button onClick={loadOrders} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
+            </div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 배송완료 처리하면 다음 {prodGrade===G.L?"차수":"달"}가 오픈될 때까지 해당 회원은 신청을 변경할 수 없습니다.</div>
+            {loadingOrders&&<div style={{textAlign:"center",padding:16,color:T.muted,fontSize:12}}>불러오는 중...</div>}
+            {!loadingOrders&&orderList.length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>신청된 회원이 없습니다.</div>}
+            {!loadingOrders&&orderList.map(o=>(
+              <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid "+(o.delivered?"#A5D6A7":T.border),background:o.delivered?"#E8F5E9":"#FAFAFA"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{o.suppName}</div>
+                  <button onClick={()=>toggleDelivered(o.suppId,o.delivered)} style={{...S.btn(o.delivered?"#EEE8E0":"#2E7D32",o.delivered?T.text:undefined,true)}}>
+                    {o.delivered?"↩ 배송완료 취소":"🚚 배송완료 처리"}
+                  </button>
+                </div>
+                <div style={{fontSize:12,color:T.muted}}>{o.items.map(it=>it.productName).join(", ")}</div>
+              </div>
+            ))}
+          </div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
             {prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 제품 ({prodList.length}개)
           </div>
@@ -2094,16 +2129,14 @@ export default function App() {
           {!viewSupp?(<>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
               <span style={S.h2}>활동 현황</span>
-              <select value={actYear} onChange={e=>{const y=+e.target.value;setActYear(y);loadActSummary(y);}} style={S.sel}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
-              <select value={actMonth} onChange={e=>setActMonth(+e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
-              <select value={actGen} onChange={e=>setActGen(e.target.value)} style={S.sel}>
-                <option value="전체">전체 기수</option>
-                {[...new Set(supps.map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}
-              </select>
               <select value={actGrade} onChange={e=>setActGrade(e.target.value)} style={S.sel}>
                 <option value="전체">전체 등급</option>
                 <option value={G.L}>라루피</option>
                 <option value={G.S}>라루피시크릿</option>
+              </select>
+              <select value={actGen} onChange={e=>setActGen(e.target.value)} style={S.sel}>
+                <option value="전체">전체 기수</option>
+                {[...new Set(supps.map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}
               </select>
               <select value={actStatusFilter} onChange={e=>setActStatusFilter(e.target.value)} style={S.sel}>
                 <option value="all">전체 상태 (활동한 회원 우선정렬)</option>
@@ -2113,8 +2146,26 @@ export default function App() {
               </select>
               <button onClick={()=>loadActSummary(actYear)} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
             </div>
+            {actGrade!==G.S&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.muted}}>라루피 차수:</span>
+                {LACHAS.map(cha=>(
+                  <button key={cha} onClick={()=>setActCha(cha)}
+                    style={{padding:"6px 14px",borderRadius:8,border:"2px solid "+(actCha===cha?T.pc:T.border),background:actCha===cha?T.pc:T.card,color:actCha===cha?"#fff":T.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    {cha}차
+                  </button>
+                ))}
+              </div>
+            )}
+            {actGrade!==G.L&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,fontWeight:700,color:T.muted}}>시크릿 년/월:</span>
+                <select value={actYear} onChange={e=>{const y=+e.target.value;setActYear(y);loadActSummary(y);}} style={S.sel}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
+                <select value={actMonth} onChange={e=>setActMonth(+e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
+              </div>
+            )}
             <div style={{background:T.pcL,borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:T.pc,fontWeight:700}}>
-              📋 다운로드 기준: {actYear}년 {actMonth}월 · {actGen==="전체"?"전체 기수":actGen} · {actGrade==="전체"?"전체 등급":GN[actGrade]}
+              📋 다운로드 기준: {actGrade!==G.S&&("라루피 "+actCha+"차")}{actGrade==="전체"&&" · "}{actGrade!==G.L&&("시크릿 "+actYear+"년 "+actMonth+"월")} · {actGen==="전체"?"전체 기수":actGen} · {actGrade==="전체"?"전체 등급":GN[actGrade]}
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               <button onClick={downloadActivityExcel} disabled={downloadingAct||downloadingSel} style={{...S.btn(T.pc,undefined,true),padding:"8px 14px",flex:1,opacity:downloadingAct?0.7:1}}>{downloadingAct?"생성 중...":<><Download size={13} style={{verticalAlign:-2,marginRight:4}}/>활동내역 엑셀</>}</button>
@@ -2128,13 +2179,13 @@ export default function App() {
                 const summary=actSummary[s.id]||{};
                 let d=null, chaLabel="";
                 if (isL) {
-                  const chaKeys=Object.keys(summary.cha||{}).map(Number);
-                  if (chaKeys.length) { const latest=Math.max(...chaKeys); d=summary.cha[latest]; chaLabel=latest+"차 · "; }
+                  d=(summary.cha||{})[actCha];
+                  chaLabel=actCha+"차 · ";
                 } else {
                   d=(summary.month||{})[actMonth];
                 }
                 const has=!!d&&d.total>0;
-                const rank=d?.submitted?2:has?1:0; // 2=제출완료, 1=진행중, 0=미입력
+                const rank=d?.submitted?2:has?1:0;
                 return { s, d, has, isL, chaLabel, rank };
               });
               const filtered=rows.filter(r=>{
@@ -2143,7 +2194,6 @@ export default function App() {
                 if (actStatusFilter==="none") return r.rank===0;
                 return true;
               });
-              // 활동한 회원 우선 정렬 (제출완료 > 진행중 > 미입력), 동순위 내에서는 원래 순서 유지
               const sorted=filtered.map((r,i)=>({...r,i})).sort((a,b)=>b.rank-a.rank||a.i-b.i);
               if (sorted.length===0) return <div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>조건에 맞는 회원이 없습니다.</div>;
               return sorted.map(({s,d,has,isL,chaLabel})=>(

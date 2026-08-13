@@ -45,8 +45,12 @@ const ACT_BLOG_MIN = 2;
 const ACT_VIRAL_MIN = 5;
 const MISSION_VIRAL_MAX = 100;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
+const currentYM = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+const currentYMLabel = () => { const d = new Date(); return d.getFullYear() + "년 " + (d.getMonth() + 1) + "월"; };
+const endOfMonthLabel = () => { const d = new Date(); return formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
 const missionSettingKey = () => "mission:setting:global";
-const missionDataKey = (grade, memberId) => "mission:" + grade + ":" + memberId;
+const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade + ":" + memberId + ":" + ym;
+const missionExtraQuotaKey = (grade, memberId, ym = currentYM()) => "extraQuota:mission:" + grade + ":" + memberId + ":" + ym;
 const dmKey = supporterId => "dm:" + supporterId;
 function formatDate(d) {
   return d.getFullYear() + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + String(d.getDate()).padStart(2, "0");
@@ -363,6 +367,7 @@ export default function App() {
   const [nlp, setNlp] = useState([]);
   const [nsc, setNsc] = useState([]);
   const [nGrade, setNGrade] = useState(G.L);
+  const [nGen, setNGen] = useState("");
   const [nf, setNf] = useState({ title: "", content: "" });
   const [nmsg, setNmsg] = useState("");
   const [af, setAf] = useState({ gen: "", nick: "", phone: "" });
@@ -401,7 +406,7 @@ export default function App() {
   const [orderList, setOrderList] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   // 튼특미션 설정 (관리자) - 라루피/시크릿 공통(통합)
-  const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, deadline: "", prodName: "튼특크림", targetMode: "all", targetIds: [] });
+  const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, prodName: "튼특크림", targetMode: "all", targetIds: [] });
   const [missionExcelPreview, setMissionExcelPreview] = useState([]);
   const [missionExcelErr, setMissionExcelErr] = useState("");
   const [missionSettingMsg, setMissionSettingMsg] = useState("");
@@ -486,7 +491,7 @@ export default function App() {
     if (me.grade === G.L) extraKey = "extraQuota:laroupi:cha:" + selectedCha;
     else extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;
     const data = await db.get(extraKey) || {};
-    const missionExtra = await db.get("extraQuota:mission:" + me.grade + ":" + me.id) || 0;
+    const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id)) || 0;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
   };
   const loadMyDelivered = async () => {
@@ -514,7 +519,7 @@ export default function App() {
         db.get(missionDataKey(me.grade, me.id)),
         db.get(dmKey(me.id)),
       ]).then(([notices, addr, openData, mSetting, mData, dmList]) => {
-        setMyNotices(notices || []);
+        setMyNotices((notices || []).filter(n => !n.gen || n.gen === me.gen));
         if (addr) setMyAddress(addr);
         if (me.grade === G.L) {
           const openList = openData || [];
@@ -748,8 +753,8 @@ export default function App() {
     const updated = { ...item, status: "rejected", rejectedReason: reason };
     delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen;
     await db.set(missionDataKey(supp.grade, supp.id), updated);
-    const cur = await db.get("extraQuota:mission:" + supp.grade + ":" + supp.id) || 0;
-    await db.set("extraQuota:mission:" + supp.grade + ":" + supp.id, Math.max(0, cur - 1));
+    const cur = await db.get(missionExtraQuotaKey(supp.grade, supp.id)) || 0;
+    await db.set(missionExtraQuotaKey(supp.grade, supp.id), Math.max(0, cur - 1));
     setRejectTarget(null);
     setAllMissions(prev => prev.map(m => m.suppId === item.suppId ? { ...m, status: "rejected", rejectedReason: reason } : m));
     setMissionActionMsg("❌ " + item.suppName + " 반려 처리 완료!");
@@ -779,8 +784,8 @@ export default function App() {
     const ok = await db.set(missionDataKey(me.grade, me.id), updated);
     if (ok) {
       if (wasRejected || isFirst) {
-        const prev = await db.get("extraQuota:mission:" + me.grade + ":" + me.id) || 0;
-        await db.set("extraQuota:mission:" + me.grade + ":" + me.id, prev + 1);
+        const prev = await db.get(missionExtraQuotaKey(me.grade, me.id)) || 0;
+        await db.set(missionExtraQuotaKey(me.grade, me.id), prev + 1);
       }
       setMyMission(updated);
       setMissionMsg("✅ 튼특미션 제출 완료! 관리자 검토 후 확정됩니다.");
@@ -1044,7 +1049,7 @@ export default function App() {
   const saveNotice = async () => {
     if (!nf.title || !nf.content) { setNmsg("제목과 내용을 입력해 주세요."); return; }
     const list = nGrade === G.L ? [...nlp] : [...nsc];
-    list.unshift({ id: "n" + Date.now(), title: nf.title, content: nf.content, date: new Date().toLocaleDateString("ko-KR") });
+    list.unshift({ id: "n" + Date.now(), title: nf.title, content: nf.content, date: new Date().toLocaleDateString("ko-KR"), gen: nGrade === G.L ? (nGen || null) : null });
     await db.set("notices:" + nGrade, list);
     nGrade === G.L ? setNlp(list) : setNsc(list);
     setNf({ title: "", content: "" }); setNmsg("등록 완료! ✓"); setTimeout(() => setNmsg(""), 2000);
@@ -1356,8 +1361,7 @@ export default function App() {
     const isL = me.grade === G.L;
     const missionTargeted = !missionSetting || missionSetting.targetMode !== "selected" || (missionSetting.targetIds || []).includes(me.id);
     const isMissionOpen = missionSetting && missionSetting.isOpen && missionTargeted;
-    const missionDeadline = missionSetting?.deadline || "";
-    const isPastDeadline = missionDeadline && new Date() > new Date(missionDeadline);
+    const missionDeadline = endOfMonthLabel();
     const hasUnreadDm = myDms.some(d => d.messages?.length && d.messages[d.messages.length - 1].from === "admin" && !d.supporterRead);
     return (
       <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Noto Sans KR',sans-serif",color:T.text,paddingBottom:60}}>
@@ -1390,7 +1394,7 @@ export default function App() {
               ?<div style={{...S.card,textAlign:"center",color:T.muted,padding:40}}>등록된 공지사항이 없습니다.</div>
               :myNotices.map(n=>(<div key={n.id} style={S.card}><div style={{fontWeight:700,marginBottom:6}}>{n.title}</div><div style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{n.content}</div><div style={{fontSize:11,color:T.muted,marginTop:8}}>{n.date}</div></div>))}
             <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
-              {isMissionOpen&&!isPastDeadline&&(
+              {isMissionOpen&&(
                 <button onClick={()=>setSp("mission")} style={{...S.btn(T.missionL,T.mission),width:"100%",fontSize:15,padding:"14px",border:"2px solid "+T.mission}}>
                   <Target size={16} style={{verticalAlign:-3,marginRight:6}}/>튼특미션 참여하기 <ArrowRight size={14} style={{verticalAlign:-2}}/>
                   {missionDeadline&&<span style={{fontSize:11,marginLeft:8,opacity:0.8}}>마감 {missionDeadline}</span>}
@@ -1407,19 +1411,13 @@ export default function App() {
                 <Lock size={30} color="#CBD3D0" style={{margin:"0 auto 8px"}}/>
                 <div style={{fontWeight:700}}>현재 미션이 오픈되지 않았습니다.</div>
               </div>
-            ):isPastDeadline&&myMission?.status!=="submitted"&&myMission?.status!=="approved"?(
-              <div style={{...S.card,textAlign:"center",padding:32}}>
-                <div style={{fontSize:28,marginBottom:8}}>⏰</div>
-                <div style={{fontWeight:700,color:"#C0392B"}}>미션 마감이 종료되었습니다.</div>
-                <div style={{fontSize:12,color:T.muted,marginTop:6}}>마감일: {missionDeadline}</div>
-              </div>
             ):(<>
               <div style={{background:T.missionL,border:"2px solid "+T.mission,borderRadius:14,padding:16,marginBottom:14}}>
                 <div style={{fontWeight:800,fontSize:15,color:T.mission,marginBottom:8}}>🧴 {missionSetting.prodName||"튼특크림"} 추가 미션</div>
                 <div style={{fontSize:13,lineHeight:1.8,color:T.text}}>
                   ✅ 미션 완료 시 <strong>제품 1개 추가 신청 가능!</strong><br/>
                   📌 바이럴 {MISSION_VIRAL_COUNT}건 (링크 + 사진 필수)<br/>
-                  {missionDeadline&&<span>⏰ 마감일: <strong>{missionDeadline}</strong></span>}
+                  ⏰ 이번달({currentYMLabel()}) 마감일: <strong>{missionDeadline}</strong>
                 </div>
                 {myMission?.status&&(
                   <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
@@ -1478,7 +1476,8 @@ export default function App() {
               </>)}
               {myMission?.status==="approved"&&(
                 <div style={{padding:"14px",background:"#E8F5E9",borderRadius:10,textAlign:"center",fontWeight:700,color:"#2E7D32",fontSize:14}}>
-                  ✅ 미션 승인 완료! 제품 추가 신청이 활성화되었습니다.
+                  ✅ 미션 승인 완료! 제품 추가 신청이 활성화되었습니다.<br/>
+                  <span style={{fontWeight:400,fontSize:12}}>다음 달에는 새 미션이 자동으로 다시 열립니다.</span>
                 </div>
               )}
               {missionMsg&&<div style={{textAlign:"center",marginTop:10,fontSize:13,fontWeight:700,color:T.mission}}>{missionMsg}</div>}
@@ -1937,9 +1936,19 @@ export default function App() {
             <div style={S.h2}><Megaphone size={16} style={{verticalAlign:-3,marginRight:6}}/>공지사항 등록</div>
             <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:4,marginBottom:14}}>
               {[[G.L,"라루피"],[G.S,"라루피시크릿"]].map(([g,name])=>(
-                <button key={g} onClick={()=>setNGrade(g)} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:nGrade===g?T.card:"transparent",color:nGrade===g?GC[g]:T.muted,boxShadow:nGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>
+                <button key={g} onClick={()=>{setNGrade(g);setNGen("");}} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,background:nGrade===g?T.card:"transparent",color:nGrade===g?GC[g]:T.muted,boxShadow:nGrade===g?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{name}</button>
               ))}
             </div>
+            {nGrade===G.L&&(()=>{
+              const laroupiGens=[...new Set(supps.filter(s=>s.grade===G.L).map(s=>s.gen))].sort();
+              return (<>
+                <label style={S.lbl}>공지 대상 기수</label>
+                <select value={nGen} onChange={e=>setNGen(e.target.value)} style={S.inp}>
+                  <option value="">전체 기수</option>
+                  {laroupiGens.map(gen=><option key={gen} value={gen}>{gen}만</option>)}
+                </select>
+              </>);
+            })()}
             <input style={S.inp} placeholder="제목" value={nf.title} onChange={e=>setNf(f=>({...f,title:e.target.value}))} />
             <textarea style={{...S.inp,minHeight:80,resize:"vertical"}} placeholder="내용" value={nf.content} onChange={e=>setNf(f=>({...f,content:e.target.value}))} />
             <button onClick={saveNotice} style={{...S.btn("#2C2C2C"),width:"100%"}}>공지 등록</button>
@@ -1952,7 +1961,7 @@ export default function App() {
               {list.map(n=>(
                 <div key={n.id} style={{...S.card,padding:"12px 16px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                    <div style={{flex:1}}><div style={{fontWeight:700,marginBottom:4}}>{n.title}</div><div style={{fontSize:13,color:T.muted,whiteSpace:"pre-wrap"}}>{n.content}</div><div style={{fontSize:11,color:T.muted,marginTop:6}}>{n.date}</div></div>
+                    <div style={{flex:1}}><div style={{fontWeight:700,marginBottom:4}}>{n.title} {n.gen&&<span style={{...S.tag(g),marginLeft:6}}>{n.gen}만</span>}</div><div style={{fontSize:13,color:T.muted,whiteSpace:"pre-wrap"}}>{n.content}</div><div style={{fontSize:11,color:T.muted,marginTop:6}}>{n.date}</div></div>
                     <button onClick={()=>delNotice(g,n.id)} style={S.btn("#FDECEA","#C0392B",true)}>삭제</button>
                   </div>
                 </div>
@@ -2285,16 +2294,11 @@ export default function App() {
                 <span style={{fontSize:13,fontWeight:700,color:missionSettingForm.isOpen?T.mission:T.muted}}>{missionSettingForm.isOpen?"미션 오픈":"미션 클로즈"}</span>
               </label>
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:8}}>
-              <div style={{flex:1}}>
-                <label style={S.lbl}>미션 제품명</label>
-                <input style={{...S.inp,marginBottom:0}} placeholder="예: 튼특크림" value={missionSettingForm.prodName||""} onChange={e=>setMissionSettingForm(s=>({...s,prodName:e.target.value}))} />
-              </div>
-              <div style={{flex:1}}>
-                <label style={S.lbl}>마감일</label>
-                <input type="date" style={{...S.inp,marginBottom:0}} value={missionSettingForm.deadline||""} onChange={e=>setMissionSettingForm(s=>({...s,deadline:e.target.value}))} />
-              </div>
+            <div style={{marginBottom:8}}>
+              <label style={S.lbl}>미션 제품명</label>
+              <input style={{...S.inp,marginBottom:0}} placeholder="예: 튼특크림" value={missionSettingForm.prodName||""} onChange={e=>setMissionSettingForm(s=>({...s,prodName:e.target.value}))} />
             </div>
+            <div style={{fontSize:12,color:T.muted,marginBottom:8}}>⏰ 마감일은 매월 말일({endOfMonthLabel()})로 자동 적용됩니다. 승인된 회원도 다음 달에는 새 미션에 다시 참여할 수 있습니다.</div>
             <div style={{marginBottom:8}}>
               <label style={S.lbl}>공개 대상</label>
               <div style={{display:"flex",gap:8,marginBottom:8}}>
@@ -2341,7 +2345,7 @@ export default function App() {
             {missionSettingMsg&&<div style={{textAlign:"center",fontSize:13,fontWeight:700,color:T.mission,marginTop:8}}>{missionSettingMsg}</div>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-            <span style={S.h2}><ClipboardList size={16} style={{verticalAlign:-3,marginRight:6}}/>미션 현황</span>
+            <span style={S.h2}><ClipboardList size={16} style={{verticalAlign:-3,marginRight:6}}/>미션 현황 ({currentYMLabel()})</span>
             <select value={missionGradeFilter} onChange={e=>setMissionGradeFilter(e.target.value)} style={S.sel}>
               <option value="전체">전체 등급</option>
               <option value={G.L}>라루피</option>

@@ -406,6 +406,7 @@ export default function App() {
   const [prodGen, setProdGen] = useState("");
   const [orderList, setOrderList] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [orderGenFilter, setOrderGenFilter] = useState("전체");
   // 튼특미션 설정 (관리자) - 라루피/시크릿 공통(통합)
   const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, prodName: "튼특크림", targetMode: "all", targetIds: [] });
   const [missionExcelPreview, setMissionExcelPreview] = useState([]);
@@ -474,9 +475,9 @@ export default function App() {
         : await db.list("selection:" + s.id + ":" + prodYear + ":" + prodMonth + ":slot:");
       const items = keys.length ? (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean).sort((a, b) => (a.slot || 1) - (b.slot || 1)) : [];
       const delivered = !!(await db.get(deliveryKey(prodGrade, s.id, prodCha, prodYear, prodMonth)));
-      return { suppId: s.id, suppName: s.gen + " · " + s.nick, items, delivered };
+      return { suppId: s.id, gen: s.gen, suppName: s.gen + " · " + s.nick, items, delivered };
     }));
-    results.sort((a, b) => (a.items.length === 0 ? -1 : 1) - (b.items.length === 0 ? -1 : 1));
+    results.sort((a, b) => (a.items.length === 0 ? -1 : 1) - (b.items.length === 0 ? -1 : 1) || a.gen.localeCompare(b.gen));
     setOrderList(results);
     setLoadingOrders(false);
   };
@@ -2117,12 +2118,18 @@ export default function App() {
           <div style={S.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={S.h2}><Package size={16} style={{verticalAlign:-3,marginRight:6}}/>신청 현황 &amp; 배송완료 처리</div>
-              <button onClick={loadOrders} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
+              <div style={{display:"flex",gap:6}}>
+                <select value={orderGenFilter} onChange={e=>setOrderGenFilter(e.target.value)} style={S.sel}>
+                  <option value="전체">전체 기수</option>
+                  {[...new Set(supps.filter(s=>s.grade===prodGrade).map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}
+                </select>
+                <button onClick={loadOrders} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
+              </div>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 배송완료 처리하면 다음 {prodGrade===G.L?"차수":"달"}가 오픈될 때까지 해당 회원은 신청을 변경할 수 없습니다.</div>
             {loadingOrders&&<div style={{textAlign:"center",padding:16,color:T.muted,fontSize:12}}>불러오는 중...</div>}
-            {!loadingOrders&&orderList.length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>등록된 회원이 없습니다.</div>}
-            {!loadingOrders&&orderList.map(o=>o.items.length===0?(
+            {!loadingOrders&&orderList.filter(o=>orderGenFilter==="전체"||o.gen===orderGenFilter).length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>등록된 회원이 없습니다.</div>}
+            {!loadingOrders&&orderList.filter(o=>orderGenFilter==="전체"||o.gen===orderGenFilter).map(o=>o.items.length===0?(
               <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid #EEE",background:"#F5F5F5"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div style={{fontWeight:700,fontSize:13,color:T.muted}}>{o.suppName}</div>

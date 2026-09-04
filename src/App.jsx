@@ -485,6 +485,13 @@ export default function App() {
     await db.set(deliveryKey(prodGrade, suppId, prodCha, prodYear, prodMonth), !current);
     await loadOrders();
   };
+  const cancelOrder = async (suppId, count) => {
+    if (!window.confirm("이 회원의 신청 내역을 취소하시겠습니까? 되돌릴 수 없습니다.")) return;
+    const isLAdmin = prodGrade === G.L;
+    const prefix = isLAdmin ? "selection:" + suppId + ":cha:" + prodCha + ":slot:" : "selection:" + suppId + ":" + prodYear + ":" + prodMonth + ":slot:";
+    await Promise.all(Array.from({ length: count }, (_, i) => db.set(prefix + (i + 1), null)));
+    await loadOrders();
+  };
   const loadMyQuota = async () => {
     if (!me) return;
     const base = BASE_QUOTA[me.grade] || 1;
@@ -2120,9 +2127,12 @@ export default function App() {
               <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid "+(o.delivered?"#A5D6A7":T.border),background:o.delivered?"#E8F5E9":"#FAFAFA"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontWeight:700,fontSize:13}}>{o.suppName}</div>
-                  <button onClick={()=>toggleDelivered(o.suppId,o.delivered)} style={{...S.btn(o.delivered?"#EEE8E0":"#2E7D32",o.delivered?T.text:undefined,true)}}>
-                    {o.delivered?"↩ 배송완료 취소":"🚚 배송완료 처리"}
-                  </button>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>toggleDelivered(o.suppId,o.delivered)} style={{...S.btn(o.delivered?"#EEE8E0":"#2E7D32",o.delivered?T.text:undefined,true)}}>
+                      {o.delivered?"↩ 배송완료 취소":"🚚 배송완료 처리"}
+                    </button>
+                    <button onClick={()=>cancelOrder(o.suppId,o.items.length)} style={S.btn("#FDECEA","#C0392B",true)}>❌ 신청 취소</button>
+                  </div>
                 </div>
                 <div style={{fontSize:12,color:T.muted}}>{o.items.map(it=>it.productName).join(", ")}</div>
               </div>

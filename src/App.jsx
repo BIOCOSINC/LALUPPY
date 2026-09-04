@@ -472,13 +472,12 @@ export default function App() {
       const keys = isLAdmin
         ? await db.list("selection:" + s.id + ":cha:" + prodCha + ":slot:")
         : await db.list("selection:" + s.id + ":" + prodYear + ":" + prodMonth + ":slot:");
-      if (!keys.length) return null;
-      const items = (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean).sort((a, b) => (a.slot || 1) - (b.slot || 1));
-      if (!items.length) return null;
+      const items = keys.length ? (await Promise.all(keys.map(k => db.get(k)))).filter(Boolean).sort((a, b) => (a.slot || 1) - (b.slot || 1)) : [];
       const delivered = !!(await db.get(deliveryKey(prodGrade, s.id, prodCha, prodYear, prodMonth)));
       return { suppId: s.id, suppName: s.gen + " · " + s.nick, items, delivered };
     }));
-    setOrderList(results.filter(Boolean));
+    results.sort((a, b) => (a.items.length === 0 ? -1 : 1) - (b.items.length === 0 ? -1 : 1));
+    setOrderList(results);
     setLoadingOrders(false);
   };
   const toggleDelivered = async (suppId, current) => {
@@ -2122,8 +2121,15 @@ export default function App() {
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 배송완료 처리하면 다음 {prodGrade===G.L?"차수":"달"}가 오픈될 때까지 해당 회원은 신청을 변경할 수 없습니다.</div>
             {loadingOrders&&<div style={{textAlign:"center",padding:16,color:T.muted,fontSize:12}}>불러오는 중...</div>}
-            {!loadingOrders&&orderList.length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>신청된 회원이 없습니다.</div>}
-            {!loadingOrders&&orderList.map(o=>(
+            {!loadingOrders&&orderList.length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>등록된 회원이 없습니다.</div>}
+            {!loadingOrders&&orderList.map(o=>o.items.length===0?(
+              <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid #EEE",background:"#F5F5F5"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:T.muted}}>{o.suppName}</div>
+                  <span style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:"#E8E8E8",color:T.muted,fontWeight:700}}>미신청</span>
+                </div>
+              </div>
+            ):(
               <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid "+(o.delivered?"#A5D6A7":T.border),background:o.delivered?"#E8F5E9":"#FAFAFA"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontWeight:700,fontSize:13}}>{o.suppName}</div>

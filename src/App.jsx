@@ -351,6 +351,7 @@ export default function App() {
   const [myQuota, setMyQuota] = useState(BASE_QUOTA[G.L]);
   const [myDelivered, setMyDelivered] = useState(false);
   const [draftSelections, setDraftSelections] = useState([]);
+  const [selLoading, setSelLoading] = useState(false);
   // 튼특미션 (써포터즈)
   const [myMission, setMyMission] = useState(null);
   const [missionSetting, setMissionSetting] = useState(null);
@@ -541,7 +542,8 @@ export default function App() {
   }, [me]);
   useEffect(() => {
     if (me && sp === "product") {
-      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota(), loadMyDelivered()]);
+      setSelLoading(true);
+      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota(), loadMyDelivered()]).finally(() => setSelLoading(false));
     }
   }, [me, sp, selectedCha, selYr, selMo, openChaList]);
   useEffect(() => {
@@ -901,7 +903,7 @@ export default function App() {
     new window.daum.Postcode({ oncomplete: data => setMyAddress(a => ({ ...a, zonecode: data.zonecode, address: data.address })) }).open();
   };
   const toggleDraftProduct = prod => {
-    if (myDelivered || !canSelectProduct) return;
+    if (myDelivered || !canSelectProduct || selLoading) return;
     setDraftSelections(prev => {
       const exists = prev.some(x => x.productId === prod.id);
       if (exists) return prev.filter(x => x.productId !== prod.id);
@@ -910,7 +912,7 @@ export default function App() {
     });
   };
   const submitDraftSelections = async () => {
-    if (!me) return;
+    if (!me || selLoading) return;
     if (draftSelections.length !== myQuota) {
       setSelMsg("⚠️ 정확히 " + myQuota + "개를 모두 선택해야 신청할 수 있습니다. (현재 " + draftSelections.length + "/" + myQuota + ")");
       setTimeout(() => setSelMsg(""), 3000);
@@ -1609,6 +1611,8 @@ export default function App() {
               <div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>
                 🚚 배송완료 처리되었습니다. 다음 {isL?"차수":"달"}가 오픈될 때까지 신청을 변경할 수 없습니다.
               </div>
+            ):selLoading?(
+              <div style={{padding:"12px 14px",background:"#F5F5F5",borderRadius:10,marginBottom:14,fontSize:13,color:T.muted,fontWeight:600}}>불러오는 중...</div>
             ):(
               mySelections.length>=myQuota
                 ?<div style={{padding:"12px 14px",background:"#E8F5E9",borderRadius:10,marginBottom:14,fontSize:13,color:"#2E7D32",fontWeight:600}}>✅ {myQuota}건 신청 완료! (배송 전까지 자유롭게 변경 가능)</div>
@@ -1657,7 +1661,9 @@ export default function App() {
                 <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:10}}>
                   제품을 선택하세요 ({draftSelections.length}/{myQuota}) · 배송 전까지 자유롭게 변경할 수 있습니다
                 </div>
-                {availableProds.length===0
+                {selLoading
+                  ?<div style={{textAlign:"center",color:T.muted,padding:32,fontSize:13}}>불러오는 중...</div>
+                  :availableProds.length===0
                   ?<div style={{textAlign:"center",color:T.muted,padding:32,fontSize:13}}>선택 가능한 제품이 없습니다.</div>
                   :<div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
                     {availableProds.map(p=>{
@@ -1675,9 +1681,9 @@ export default function App() {
                       );
                     })}
                   </div>}
-                <button onClick={submitDraftSelections} disabled={draftSelections.length!==myQuota}
-                  style={{...S.btn(draftSelections.length===myQuota?T.pc:"#CCC"),width:"100%",cursor:draftSelections.length===myQuota?"pointer":"not-allowed"}}>
-                  {draftSelections.length===myQuota?"✅ "+myQuota+"개 신청하기":"⚠️ "+myQuota+"개를 모두 선택해 주세요 ("+draftSelections.length+"/"+myQuota+")"}
+                <button onClick={submitDraftSelections} disabled={draftSelections.length!==myQuota||selLoading}
+                  style={{...S.btn(draftSelections.length===myQuota&&!selLoading?T.pc:"#CCC"),width:"100%",cursor:draftSelections.length===myQuota&&!selLoading?"pointer":"not-allowed"}}>
+                  {selLoading?"불러오는 중...":draftSelections.length===myQuota?"✅ "+myQuota+"개 신청하기":"⚠️ "+myQuota+"개를 모두 선택해 주세요 ("+draftSelections.length+"/"+myQuota+")"}
                 </button>
               </>)}
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:T.pc}}>{selMsg}</div>}

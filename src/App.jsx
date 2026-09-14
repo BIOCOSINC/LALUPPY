@@ -740,19 +740,23 @@ export default function App() {
     setLoadingMissions(true);
     const list = await db.get("supporters") || [];
     const results = await Promise.all(list.map(async s => {
-      const data = await db.get(missionDataKey(s.grade, s.id));
-      if (!data || !data.status) return null;
-      return { ...data, suppId: s.id, suppName: s.gen + " · " + s.nick, grade: s.grade, gen: s.gen };
+      const keys = await db.list("mission:" + s.grade + ":" + s.id + ":");
+      const items = await Promise.all(keys.map(async k => {
+        const data = await db.get(k);
+        if (!data || !data.status) return null;
+        return { ...data, ym: k.split(":")[3], suppId: s.id, suppName: s.gen + " · " + s.nick, grade: s.grade, gen: s.gen };
+      }));
+      return items.filter(Boolean);
     }));
-    setAllMissions(results.filter(Boolean));
+    setAllMissions(results.flat().sort((a, b) => b.ym.localeCompare(a.ym)));
     setLoadingMissions(false);
   };
   const approveMission = async (item) => {
     if (item.status === "approved") return;
     const updated = { ...item, status: "approved", rejectedReason: "" };
-    delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen;
-    await db.set(missionDataKey(item.grade || supps.find(s=>s.id===item.suppId)?.grade, item.suppId), updated);
-    setAllMissions(prev => prev.map(m => m.suppId === item.suppId ? { ...m, status: "approved", rejectedReason: "" } : m));
+    delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
+    await db.set(missionDataKey(item.grade, item.suppId, item.ym), updated);
+    setAllMissions(prev => prev.map(m => (m.suppId === item.suppId && m.ym === item.ym) ? { ...m, status: "approved", rejectedReason: "" } : m));
     setMissionActionMsg("✅ " + item.suppName + " 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
@@ -760,12 +764,12 @@ export default function App() {
     const supp = supps.find(s => s.id === item.suppId);
     if (!supp) return;
     const updated = { ...item, status: "rejected", rejectedReason: reason };
-    delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen;
-    await db.set(missionDataKey(supp.grade, supp.id), updated);
-    const cur = await db.get(missionExtraQuotaKey(supp.grade, supp.id)) || 0;
-    await db.set(missionExtraQuotaKey(supp.grade, supp.id), Math.max(0, cur - 1));
+    delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
+    await db.set(missionDataKey(supp.grade, supp.id, item.ym), updated);
+    const cur = await db.get(missionExtraQuotaKey(supp.grade, supp.id, item.ym)) || 0;
+    await db.set(missionExtraQuotaKey(supp.grade, supp.id, item.ym), Math.max(0, cur - 1));
     setRejectTarget(null);
-    setAllMissions(prev => prev.map(m => m.suppId === item.suppId ? { ...m, status: "rejected", rejectedReason: reason } : m));
+    setAllMissions(prev => prev.map(m => (m.suppId === item.suppId && m.ym === item.ym) ? { ...m, status: "rejected", rejectedReason: reason } : m));
     setMissionActionMsg("❌ " + item.suppName + " 반려 처리 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
@@ -2399,12 +2403,13 @@ export default function App() {
             const filtered=allMissions.filter(m=>(missionGradeFilter==="전체"||m.grade===missionGradeFilter)&&(missionSubTab==="all"||m.status===missionSubTab));
             if(filtered.length===0) return <div style={{...S.card,textAlign:"center",color:T.muted,padding:32}}>해당 항목이 없습니다.</div>;
             return filtered.map((m,idx)=>(
-              <div key={m.suppId+idx} style={{...S.card,border:m.status==="rejected"?"2px solid #C0392B":m.status==="approved"?"2px solid #2E7D32":"2px solid #E0B97A"}}>
+              <div key={m.suppId+m.ym} style={{...S.card,border:m.status==="rejected"?"2px solid #C0392B":m.status==="approved"?"2px solid #2E7D32":"2px solid #E0B97A"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <div>
                     <div style={{fontWeight:700,fontSize:14}}>{m.suppName}</div>
                     <div style={{display:"flex",gap:6,marginTop:4,alignItems:"center"}}>
                       <span style={S.tag(m.grade)}>{GN[m.grade]}</span>
+                      <span style={{fontSize:11,color:T.mission,fontWeight:700}}>{m.ym}</span>
                       <MissionBadge status={m.status}/>
                       {m.submittedAt&&<span style={{fontSize:11,color:T.muted}}>{m.submittedAt}</span>}
                     </div>

@@ -58,10 +58,10 @@ const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade
 const addMonths = (year, month, delta) => { const d = new Date(year, month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; };
 const ymStr = (year, month) => year + "-" + String(month).padStart(2, "0");
 const genIsEven = gen => (parseInt(gen, 10) || 0) % 2 === 0;
+// 주의: 제품/신청(selection) 라벨은 "신청이 일어나는 달"(예: 9월) 기준이고, 활동(activity) 라벨은 "활동이 시작하는 달"(예: 8월) 기준이라 한 달 차이가 난다.
 const isSAppWindowOpen = (year, month, kst = kstNow()) => {
-  const { year: ay, month: am } = addMonths(year, month, 1);
   const n = dnum(kst.year, kst.month, kst.day);
-  return n >= dnum(ay, am, 11) && n <= dnum(ay, am, 15);
+  return n >= dnum(year, month, 11) && n <= dnum(year, month, 15);
 };
 const isSActivityWindowOpen = (year, month, kst = kstNow()) => {
   const { year: ey, month: em } = addMonths(year, month, 1);
@@ -375,8 +375,7 @@ export default function App() {
   const [selectedCha, setSelectedCha] = useState(1);
   const defaultSRound = () => {
     const now = kstNow();
-    const prev = addMonths(now.year, now.month, -1);
-    return isSAppWindowOpen(prev.year, prev.month, now) ? prev : { year: now.year, month: now.month };
+    return { year: now.year, month: now.month };
   };
   const [selYr, setSelYr] = useState(() => defaultSRound().year);
   const [selMo, setSelMo] = useState(() => defaultSRound().month);
@@ -542,7 +541,8 @@ export default function App() {
       missionYm = ymStr(paired.year, paired.month);
     } else {
       extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;
-      missionYm = ymStr(selYr, selMo);
+      const paired = addMonths(selYr, selMo, -1);
+      missionYm = ymStr(paired.year, paired.month);
     }
     const data = await db.get(extraKey) || {};
     const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id, missionYm)) || 0;

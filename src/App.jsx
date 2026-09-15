@@ -495,11 +495,11 @@ export default function App() {
   const loadMyQuota = async () => {
     if (!me) return;
     const base = BASE_QUOTA[me.grade] || 1;
-    let extraKey;
-    if (me.grade === G.L) extraKey = "extraQuota:laroupi:cha:" + selectedCha;
-    else extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;
+    let extraKey, missionYm;
+    if (me.grade === G.L) { extraKey = "extraQuota:laroupi:cha:" + selectedCha; missionYm = currentYM(); }
+    else { extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo; missionYm = selYr + "-" + String(selMo).padStart(2, "0"); }
     const data = await db.get(extraKey) || {};
-    const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id)) || 0;
+    const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id, missionYm)) || 0;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
   };
   const loadMyDelivered = async () => {

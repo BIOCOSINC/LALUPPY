@@ -45,28 +45,31 @@ const ACT_BLOG_MIN = 2;
 const ACT_VIRAL_MIN = 5;
 const MISSION_VIRAL_MAX = 100;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
-// 마감일 규칙은 방문자 기기 타임존이 아니라 한국 시간(KST) 기준으로 계산한다. (기기 시간대가 다르면 날짜 기준 자동 오픈/마감이 어긋나므로)
-const nowKST = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-const currentYM = () => { const d = nowKST(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
-const currentYMLabel = () => { const d = nowKST(); return d.getFullYear() + "년 " + (d.getMonth() + 1) + "월"; };
-const endOfMonthLabel = () => { const d = nowKST(); return formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
+// 마감일 규칙은 방문자 기기 타임존/Intl 지원 여부와 무관하게 한국 시간(KST) 기준으로 계산한다.
+// Intl.DateTimeFormat(timeZone) 방식은 일부 안드로이드 웹뷰(ICU 데이터 없는 빌드)에서 조용히 깨지므로, UTC+9 오프셋 계산만 사용한다.
+const kstNow = () => { const t = new Date(Date.now() + 9 * 60 * 60 * 1000); return { year: t.getUTCFullYear(), month: t.getUTCMonth() + 1, day: t.getUTCDate() }; };
+const dnum = (year, month, day) => year * 10000 + month * 100 + day;
+const currentYM = () => { const k = kstNow(); return ymStr(k.year, k.month); };
+const currentYMLabel = () => { const k = kstNow(); return k.year + "년 " + k.month + "월"; };
+const endOfMonthLabel = () => { const k = kstNow(); return formatDate(new Date(k.year, k.month, 0)); };
 const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade + ":" + memberId + ":" + ym;
 // 마감일 규칙: 시크릿은 전월11일~금월10일 활동->금월11~15일 신청(같은 달 미션과 페어), 라루피 짝수기는 전월26~금월25일 활동->26~말일 신청(전월 미션과 페어), 홀수기는 전월 한달 활동->금월1~5일 신청(전전월 미션과 페어)
 const addMonths = (year, month, delta) => { const d = new Date(year, month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; };
 const ymStr = (year, month) => year + "-" + String(month).padStart(2, "0");
 const genIsEven = gen => (parseInt(gen, 10) || 0) % 2 === 0;
-const isSAppWindowOpen = (year, month, now = nowKST()) => {
+const isSAppWindowOpen = (year, month, kst = kstNow()) => {
   const { year: ay, month: am } = addMonths(year, month, 1);
-  return now >= new Date(ay, am - 1, 11) && now <= new Date(ay, am - 1, 15, 23, 59, 59, 999);
+  const n = dnum(kst.year, kst.month, kst.day);
+  return n >= dnum(ay, am, 11) && n <= dnum(ay, am, 15);
 };
-const isSActivityWindowOpen = (year, month, now = nowKST()) => {
+const isSActivityWindowOpen = (year, month, kst = kstNow()) => {
   const { year: ey, month: em } = addMonths(year, month, 1);
-  return now >= new Date(year, month - 1, 11) && now <= new Date(ey, em - 1, 10, 23, 59, 59, 999);
+  const n = dnum(kst.year, kst.month, kst.day);
+  return n >= dnum(year, month, 11) && n <= dnum(ey, em, 10);
 };
-const isLAppWindowOpen = (gen, now = nowKST()) => {
-  const day = now.getDate();
-  return genIsEven(gen) ? day >= 26 : day <= 5;
+const isLAppWindowOpen = (gen, kst = kstNow()) => {
+  return genIsEven(gen) ? kst.day >= 26 : kst.day <= 5;
 };
 const prodWindowOverrideKey = gen => "prodWindowOverride:laroupi:gen:" + gen;
 const missionExtraQuotaKey = (grade, memberId, ym = currentYM()) => "extraQuota:mission:" + grade + ":" + memberId + ":" + ym;
@@ -371,9 +374,9 @@ export default function App() {
   const [addrEditMode, setAddrEditMode] = useState(false);
   const [selectedCha, setSelectedCha] = useState(1);
   const defaultSRound = () => {
-    const now = nowKST();
-    const prev = addMonths(now.getFullYear(), now.getMonth() + 1, -1);
-    return isSAppWindowOpen(prev.year, prev.month, now) ? prev : { year: now.getFullYear(), month: now.getMonth() + 1 };
+    const now = kstNow();
+    const prev = addMonths(now.year, now.month, -1);
+    return isSAppWindowOpen(prev.year, prev.month, now) ? prev : { year: now.year, month: now.month };
   };
   const [selYr, setSelYr] = useState(() => defaultSRound().year);
   const [selMo, setSelMo] = useState(() => defaultSRound().month);
@@ -533,9 +536,9 @@ export default function App() {
     let extraKey, missionYm;
     if (me.grade === G.L) {
       extraKey = "extraQuota:laroupi:cha:" + selectedCha;
-      const now = nowKST();
+      const now = kstNow();
       const offset = genIsEven(me.gen) ? 1 : 2;
-      const paired = addMonths(now.getFullYear(), now.getMonth() + 1, -offset);
+      const paired = addMonths(now.year, now.month, -offset);
       missionYm = ymStr(paired.year, paired.month);
     } else {
       extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;

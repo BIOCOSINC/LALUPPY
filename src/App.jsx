@@ -45,24 +45,26 @@ const ACT_BLOG_MIN = 2;
 const ACT_VIRAL_MIN = 5;
 const MISSION_VIRAL_MAX = 100;
 const openChaKey = gen => "openCha:laroupi:gen:" + gen;
-const currentYM = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
-const currentYMLabel = () => { const d = new Date(); return d.getFullYear() + "년 " + (d.getMonth() + 1) + "월"; };
-const endOfMonthLabel = () => { const d = new Date(); return formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
+// 마감일 규칙은 방문자 기기 타임존이 아니라 한국 시간(KST) 기준으로 계산한다. (기기 시간대가 다르면 날짜 기준 자동 오픈/마감이 어긋나므로)
+const nowKST = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+const currentYM = () => { const d = nowKST(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+const currentYMLabel = () => { const d = nowKST(); return d.getFullYear() + "년 " + (d.getMonth() + 1) + "월"; };
+const endOfMonthLabel = () => { const d = nowKST(); return formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
 const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade + ":" + memberId + ":" + ym;
 // 마감일 규칙: 시크릿은 전월11일~금월10일 활동->금월11~15일 신청(같은 달 미션과 페어), 라루피 짝수기는 전월26~금월25일 활동->26~말일 신청(전월 미션과 페어), 홀수기는 전월 한달 활동->금월1~5일 신청(전전월 미션과 페어)
 const addMonths = (year, month, delta) => { const d = new Date(year, month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; };
 const ymStr = (year, month) => year + "-" + String(month).padStart(2, "0");
 const genIsEven = gen => (parseInt(gen, 10) || 0) % 2 === 0;
-const isSAppWindowOpen = (year, month, now = new Date()) => {
+const isSAppWindowOpen = (year, month, now = nowKST()) => {
   const { year: ay, month: am } = addMonths(year, month, 1);
   return now >= new Date(ay, am - 1, 11) && now <= new Date(ay, am - 1, 15, 23, 59, 59, 999);
 };
-const isSActivityWindowOpen = (year, month, now = new Date()) => {
+const isSActivityWindowOpen = (year, month, now = nowKST()) => {
   const { year: ey, month: em } = addMonths(year, month, 1);
   return now >= new Date(year, month - 1, 11) && now <= new Date(ey, em - 1, 10, 23, 59, 59, 999);
 };
-const isLAppWindowOpen = (gen, now = new Date()) => {
+const isLAppWindowOpen = (gen, now = nowKST()) => {
   const day = now.getDate();
   return genIsEven(gen) ? day >= 26 : day <= 5;
 };
@@ -369,7 +371,7 @@ export default function App() {
   const [addrEditMode, setAddrEditMode] = useState(false);
   const [selectedCha, setSelectedCha] = useState(1);
   const defaultSRound = () => {
-    const now = new Date();
+    const now = nowKST();
     const prev = addMonths(now.getFullYear(), now.getMonth() + 1, -1);
     return isSAppWindowOpen(prev.year, prev.month, now) ? prev : { year: now.getFullYear(), month: now.getMonth() + 1 };
   };
@@ -531,7 +533,7 @@ export default function App() {
     let extraKey, missionYm;
     if (me.grade === G.L) {
       extraKey = "extraQuota:laroupi:cha:" + selectedCha;
-      const now = new Date();
+      const now = nowKST();
       const offset = genIsEven(me.gen) ? 1 : 2;
       const paired = addMonths(now.getFullYear(), now.getMonth() + 1, -offset);
       missionYm = ymStr(paired.year, paired.month);

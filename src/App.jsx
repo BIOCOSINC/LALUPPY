@@ -50,6 +50,23 @@ const currentYMLabel = () => { const d = new Date(); return d.getFullYear() + "�
 const endOfMonthLabel = () => { const d = new Date(); return formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
 const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade + ":" + memberId + ":" + ym;
+// 마감일 규칙: 시크릿은 전월11일~금월10일 활동->금월11~15일 신청(같은 달 미션과 페어), 라루피 짝수기는 전월26~금월25일 활동->26~말일 신청(전월 미션과 페어), 홀수기는 전월 한달 활동->금월1~5일 신청(전전월 미션과 페어)
+const addMonths = (year, month, delta) => { const d = new Date(year, month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; };
+const ymStr = (year, month) => year + "-" + String(month).padStart(2, "0");
+const genIsEven = gen => (parseInt(gen, 10) || 0) % 2 === 0;
+const isSAppWindowOpen = (year, month, now = new Date()) => {
+  const { year: ay, month: am } = addMonths(year, month, 1);
+  return now >= new Date(ay, am - 1, 11) && now <= new Date(ay, am - 1, 15, 23, 59, 59, 999);
+};
+const isSActivityWindowOpen = (year, month, now = new Date()) => {
+  const { year: ey, month: em } = addMonths(year, month, 1);
+  return now >= new Date(year, month - 1, 11) && now <= new Date(ey, em - 1, 10, 23, 59, 59, 999);
+};
+const isLAppWindowOpen = (gen, now = new Date()) => {
+  const day = now.getDate();
+  return genIsEven(gen) ? day >= 26 : day <= 5;
+};
+const prodWindowOverrideKey = gen => "prodWindowOverride:laroupi:gen:" + gen;
 const missionExtraQuotaKey = (grade, memberId, ym = currentYM()) => "extraQuota:mission:" + grade + ":" + memberId + ":" + ym;
 const dmKey = supporterId => "dm:" + supporterId;
 function formatDate(d) {
@@ -133,6 +150,17 @@ function OpenChaToggleByGen({ cha, gen, refreshKey, onToggle }) {
     <button onClick={async () => { await onToggle(); const d = await db.get(openChaKey(gen)) || []; setIsOpen(d.includes(cha)); }}
       style={{ padding: "10px 18px", borderRadius: 10, border: "2px solid " + (isOpen ? "#C0392B" : T.pc), background: isOpen ? "#FDECEA" : T.pcL, color: isOpen ? "#C0392B" : T.pc, fontWeight: 700, cursor: "pointer", fontSize: 14, minWidth: 60 }}>
       {cha}차 {isOpen ? "🟢 오픈" : "⚫ 클로즈"}
+    </button>
+  );
+}
+function ProdWindowOverrideToggle({ gen, refreshKey, onToggle }) {
+  const [isOn, setIsOn] = useState(false);
+  useEffect(() => { if (!gen) return; db.get(prodWindowOverrideKey(gen)).then(d => setIsOn(!!d)); }, [gen, refreshKey]);
+  if (!gen) return null;
+  return (
+    <button onClick={async () => { await onToggle(); const d = await db.get(prodWindowOverrideKey(gen)); setIsOn(!!d); }}
+      style={{ padding: "8px 14px", borderRadius: 10, border: "2px solid " + (isOn ? T.pc : T.border), background: isOn ? T.pcL : "#fff", color: isOn ? T.pc : T.muted, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+      {isOn ? "🟢 제품신청 강제오픈 중" : "⚫ 자동 기간만 적용 (" + (genIsEven(gen) ? "26일~말일" : "1일~5일") + ")"}
     </button>
   );
 }
@@ -496,8 +524,16 @@ export default function App() {
     if (!me) return;
     const base = BASE_QUOTA[me.grade] || 1;
     let extraKey, missionYm;
-    if (me.grade === G.L) { extraKey = "extraQuota:laroupi:cha:" + selectedCha; missionYm = currentYM(); }
-    else { extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo; missionYm = selYr + "-" + String(selMo).padStart(2, "0"); }
+    if (me.grade === G.L) {
+      extraKey = "extraQuota:laroupi:cha:" + selectedCha;
+      const now = new Date();
+      const offset = genIsEven(me.gen) ? 1 : 2;
+      const paired = addMonths(now.getFullYear(), now.getMonth() + 1, -offset);
+      missionYm = ymStr(paired.year, paired.month);
+    } else {
+      extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;
+      missionYm = ymStr(selYr, selMo);
+    }
     const data = await db.get(extraKey) || {};
     const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id, missionYm)) || 0;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
@@ -646,25 +682,40 @@ export default function App() {
         setCanSelectReason(selectedCha + "차는 아직 오픈되지 않았습니다.");
         return;
       }
-      if (selectedCha === 1) { setCanSelectProduct(true); setCanSelectReason(""); return; }
-      const prevAct = await db.get("activity:" + me.id + ":cha:" + (selectedCha - 1));
-      if (!prevAct || prevAct.submitted) { setCanSelectProduct(true); setCanSelectReason(""); }
-      else { setCanSelectProduct(false); setCanSelectReason((selectedCha - 1) + "차 활동을 먼저 제출해 주세요."); }
+      if (selectedCha > 1) {
+        const prevAct = await db.get("activity:" + me.id + ":cha:" + (selectedCha - 1));
+        if (prevAct && !prevAct.submitted) {
+          setCanSelectProduct(false);
+          setCanSelectReason((selectedCha - 1) + "차 활동을 먼저 제출해 주세요.");
+          return;
+        }
+      }
+      const override = await db.get(prodWindowOverrideKey(me.gen));
+      if (!isLAppWindowOpen(me.gen) && !override) {
+        setCanSelectProduct(false);
+        setCanSelectReason("제품 신청 가능 기간이 아닙니다. (" + (genIsEven(me.gen) ? "매월 26일~말일" : "매월 1일~5일") + ")");
+        return;
+      }
+      setCanSelectProduct(true); setCanSelectReason("");
     } else {
-      const keys = await db.list("selection:" + me.id + ":");
-      const filtered = keys.filter(k => !k.includes(":slot:"));
-      if (filtered.length === 0) { setCanSelectProduct(true); setCanSelectReason(""); return; }
-      const sels = (await Promise.all(filtered.map(k => db.get(k)))).filter(Boolean);
-      sels.sort((a, b) => b.year - a.year || b.month - a.month);
-      const last = sels[0];
-      const lastAct = last ? await db.get("activity:" + me.id + ":" + last.year + ":" + last.month) : null;
-      if (lastAct?.submitted) { setCanSelectProduct(true); setCanSelectReason(""); }
-      else { setCanSelectProduct(false); setCanSelectReason(last.year + "년 " + last.month + "월 활동을 먼저 제출해 주세요."); }
+      const { year: py, month: pm } = addMonths(selYr, selMo, -1);
+      const prevAct = await db.get("activity:" + me.id + ":" + py + ":" + pm);
+      if (prevAct && !prevAct.submitted) {
+        setCanSelectProduct(false);
+        setCanSelectReason(py + "년 " + pm + "월 활동을 먼저 제출해 주세요.");
+        return;
+      }
+      const overridden = openMonthsList.some(om => om.year === selYr && om.month === selMo);
+      if (!isSAppWindowOpen(selYr, selMo) && !overridden) {
+        setCanSelectProduct(false);
+        setCanSelectReason("제품 신청 가능 기간이 아닙니다. (매월 11일~15일)");
+        return;
+      }
+      setCanSelectProduct(true); setCanSelectReason("");
     }
   };
   const isMonthAccessible = (year, month) => {
-    const now = new Date(); const curY = now.getFullYear(); const curM = now.getMonth() + 1;
-    if (year < curY || (year === curY && month <= curM)) return true;
+    if (isSActivityWindowOpen(year, month)) return true;
     return openMonthsList.some(om => om.year === year && om.month === month);
   };
   const loadActSummary = async (year, suppList) => {
@@ -771,6 +822,19 @@ export default function App() {
     setRejectTarget(null);
     setAllMissions(prev => prev.map(m => (m.suppId === item.suppId && m.ym === item.ym) ? { ...m, status: "rejected", rejectedReason: reason } : m));
     setMissionActionMsg("❌ " + item.suppName + " 반려 처리 완료!");
+    setTimeout(() => setMissionActionMsg(""), 2500);
+  };
+  const bulkApproveMissions = async () => {
+    const targets = allMissions.filter(m => m.status === "submitted" && (missionGradeFilter === "전체" || m.grade === missionGradeFilter));
+    if (!targets.length) return;
+    if (!window.confirm(targets.length + "건을 모두 승인하시겠습니까?")) return;
+    await Promise.all(targets.map(item => {
+      const updated = { ...item, status: "approved", rejectedReason: "" };
+      delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
+      return db.set(missionDataKey(item.grade, item.suppId, item.ym), updated);
+    }));
+    setAllMissions(prev => prev.map(m => targets.some(t => t.suppId === m.suppId && t.ym === m.ym) ? { ...m, status: "approved", rejectedReason: "" } : m));
+    setMissionActionMsg("✅ " + targets.length + "건 일괄 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
   const saveMissionDraft = async () => {
@@ -988,6 +1052,12 @@ export default function App() {
     setOpenRefresh(r => r + 1);
     setProdMsg(gen + " " + cha + "차 " + (isOpen ? "클로즈" : "오픈") + " 완료! ✓");
     setTimeout(() => setProdMsg(""), 1500);
+  };
+  const toggleProdWindowOverride = async gen => {
+    const key = prodWindowOverrideKey(gen);
+    const cur = await db.get(key);
+    await db.set(key, !cur);
+    setOpenRefresh(r => r + 1);
   };
   const addOpenMonth = async () => {
     const list = await db.get("openMonths:" + prodGrade) || [];
@@ -2011,15 +2081,17 @@ export default function App() {
               })()}
               {prodGen?(<>
                 <OpenChaListByGen gen={prodGen} refreshKey={openRefresh}/>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
                   {LACHAS.map(cha=><OpenChaToggleByGen key={cha} cha={cha} gen={prodGen} refreshKey={openRefresh} onToggle={()=>toggleOpenCha(cha,prodGen)}/>)}
                 </div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:6}}>제품신청은 {genIsEven(prodGen)?"매월 26일~말일":"매월 1일~5일"}에 자동으로 열립니다. 예외적으로 지금 바로 열려면:</div>
+                <ProdWindowOverrideToggle gen={prodGen} refreshKey={openRefresh} onToggle={()=>toggleProdWindowOverride(prodGen)}/>
               </>):<div style={{padding:"14px",background:"#F9F6F2",borderRadius:10,textAlign:"center",fontSize:13,color:T.muted}}>기수를 선택하면 차수 오픈 현황을 볼 수 있습니다.</div>}
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
             </>)}
             {prodGrade===G.S&&(<>
               <div style={{fontWeight:700,fontSize:14,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><Unlock size={15}/>활동 오픈 달 설정</div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>오픈된 달만 써포터즈가 미래 달 활동을 입력할 수 있습니다.</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:12}}>활동은 전월 11일~금월 10일, 제품신청은 11일~15일에 자동으로 열립니다. 여기에 달을 추가하면 그 자동 기간과 상관없이 해당 달의 활동/제품신청을 강제로 열어둡니다.</div>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
                 <select value={newOpenMonth.year} onChange={e=>setNewOpenMonth(m=>({...m,year:+e.target.value}))} style={{...S.sel,flex:1}}>{YEARS.map(y=><option key={y} value={y}>{y}년</option>)}</select>
                 <select value={newOpenMonth.month} onChange={e=>setNewOpenMonth(m=>({...m,month:+e.target.value}))} style={{...S.sel,flex:1}}>{MONTHS.map(m=><option key={m} value={m}>{m}월</option>)}</select>
@@ -2378,13 +2450,16 @@ export default function App() {
             {missionSettingMsg&&<div style={{textAlign:"center",fontSize:13,fontWeight:700,color:T.mission,marginTop:8}}>{missionSettingMsg}</div>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-            <span style={S.h2}><ClipboardList size={16} style={{verticalAlign:-3,marginRight:6}}/>미션 현황 ({currentYMLabel()})</span>
+            <span style={S.h2}><ClipboardList size={16} style={{verticalAlign:-3,marginRight:6}}/>미션 현황</span>
             <select value={missionGradeFilter} onChange={e=>setMissionGradeFilter(e.target.value)} style={S.sel}>
               <option value="전체">전체 등급</option>
               <option value={G.L}>라루피</option>
               <option value={G.S}>라루피시크릿</option>
             </select>
             <button onClick={loadAllMissions} style={S.btn("#EEE8E0",T.text,true)}>새로고침</button>
+            {(()=>{const pendingCnt=allMissions.filter(m=>m.status==="submitted"&&(missionGradeFilter==="전체"||m.grade===missionGradeFilter)).length;
+              return pendingCnt>0&&<button onClick={bulkApproveMissions} style={S.btn("#2E7D32",undefined,true)}>✅ 전체 일괄승인 ({pendingCnt}건)</button>;
+            })()}
           </div>
           <div style={{display:"flex",background:"#F0EBE4",borderRadius:10,padding:3,marginBottom:14}}>
             {[["all","전체"],["submitted","⏳검토중"],["approved","✅승인"],["rejected","❌반려"]].map(([val,label])=>{

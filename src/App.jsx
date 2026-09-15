@@ -368,8 +368,13 @@ export default function App() {
   const [addrSaving, setAddrSaving] = useState(false);
   const [addrEditMode, setAddrEditMode] = useState(false);
   const [selectedCha, setSelectedCha] = useState(1);
-  const [selYr, setSelYr] = useState(new Date().getFullYear());
-  const [selMo, setSelMo] = useState(new Date().getMonth() + 1);
+  const defaultSRound = () => {
+    const now = new Date();
+    const prev = addMonths(now.getFullYear(), now.getMonth() + 1, -1);
+    return isSAppWindowOpen(prev.year, prev.month, now) ? prev : { year: now.getFullYear(), month: now.getMonth() + 1 };
+  };
+  const [selYr, setSelYr] = useState(() => defaultSRound().year);
+  const [selMo, setSelMo] = useState(() => defaultSRound().month);
   const [availableProds, setAvailableProds] = useState([]);
   const [mySelections, setMySelections] = useState([]);
   const [selMsg, setSelMsg] = useState("");

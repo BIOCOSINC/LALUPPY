@@ -71,7 +71,14 @@ const isSActivityWindowOpen = (year, month, kst = kstNow()) => {
 const isLAppWindowOpen = (gen, kst = kstNow()) => {
   return genIsEven(gen) ? kst.day >= 26 : kst.day <= 5;
 };
-const prodWindowOverrideKey = gen => "prodWindowOverride:laroupi:gen:" + gen;
+const lDeadlineExtKey = gen => "deadlineExt:laroupi:" + gen;
+const sDeadlineExtKey = (year, month) => "deadlineExt:secret:" + year + ":" + month;
+// ext는 "YYYY-MM-DD" 문자열(그 날짜까지 신청 연장) 또는 null(연장 없음)
+const isDeadlineExtended = (ext, kst = kstNow()) => {
+  if (!ext) return false;
+  const [y, m, d] = ext.split("-").map(Number);
+  return dnum(kst.year, kst.month, kst.day) <= dnum(y, m, d);
+};
 const missionExtraQuotaKey = (grade, memberId, ym = currentYM()) => "extraQuota:mission:" + grade + ":" + memberId + ":" + ym;
 const dmKey = supporterId => "dm:" + supporterId;
 function formatDate(d) {
@@ -158,15 +165,21 @@ function OpenChaToggleByGen({ cha, gen, refreshKey, onToggle }) {
     </button>
   );
 }
-function ProdWindowOverrideToggle({ gen, refreshKey, onToggle }) {
-  const [isOn, setIsOn] = useState(false);
-  useEffect(() => { if (!gen) return; db.get(prodWindowOverrideKey(gen)).then(d => setIsOn(!!d)); }, [gen, refreshKey]);
-  if (!gen) return null;
+function DeadlineExtEditor({ dbKey, label, refreshKey, onSave }) {
+  const [ext, setExt] = useState(null);
+  const [draft, setDraft] = useState("");
+  useEffect(() => { if (!dbKey) return; db.get(dbKey).then(d => { setExt(d || null); setDraft(d || ""); }); }, [dbKey, refreshKey]);
+  if (!dbKey) return null;
   return (
-    <button onClick={async () => { await onToggle(); const d = await db.get(prodWindowOverrideKey(gen)); setIsOn(!!d); }}
-      style={{ padding: "8px 14px", borderRadius: 10, border: "2px solid " + (isOn ? T.pc : T.border), background: isOn ? T.pcL : "#fff", color: isOn ? T.pc : T.muted, fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
-      {isOn ? "🟢 제품신청 강제오픈 중" : "⚫ 자동 기간만 적용 (" + (genIsEven(gen) ? "26일~말일" : "1일~5일") + ")"}
-    </button>
+    <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "10px 12px" }}>
+      <div style={{ fontSize: 12, color: T.muted, marginBottom: 6 }}>{label}</div>
+      {ext && <div style={{ fontSize: 12, color: T.pc, fontWeight: 700, marginBottom: 6 }}>현재 연장된 마감일: {ext}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input type="date" style={{ ...S.inp, marginBottom: 0, flex: 1 }} value={draft} onChange={e => setDraft(e.target.value)} />
+        <button onClick={() => onSave(draft)} style={S.btn(T.pc, undefined, true)}>연장 저장</button>
+        {ext && <button onClick={() => { setDraft(""); onSave(""); }} style={S.btn("#EEE8E0", T.text, true)}>연장 해제</button>}
+      </div>
+    </div>
   );
 }
 function OpenMonthList({ grade, refreshKey }) {
@@ -700,8 +713,8 @@ export default function App() {
           return;
         }
       }
-      const override = await db.get(prodWindowOverrideKey(me.gen));
-      if (!isLAppWindowOpen(me.gen) && !override) {
+      const ext = await db.get(lDeadlineExtKey(me.gen));
+      if (!isLAppWindowOpen(me.gen) && !isDeadlineExtended(ext)) {
         setCanSelectProduct(false);
         setCanSelectReason("제품 신청 가능 기간이 아닙니다. (" + (genIsEven(me.gen) ? "매월 26일~말일" : "매월 1일~5일") + ")");
         return;
@@ -716,7 +729,8 @@ export default function App() {
         return;
       }
       const overridden = openMonthsList.some(om => om.year === selYr && om.month === selMo);
-      if (!isSAppWindowOpen(selYr, selMo) && !overridden) {
+      const ext = await db.get(sDeadlineExtKey(selYr, selMo));
+      if (!isSAppWindowOpen(selYr, selMo) && !overridden && !isDeadlineExtended(ext)) {
         setCanSelectProduct(false);
         setCanSelectReason("제품 신청 가능 기간이 아닙니다. (매월 11일~15일)");
         return;
@@ -1063,10 +1077,12 @@ export default function App() {
     setProdMsg(gen + " " + cha + "차 " + (isOpen ? "클로즈" : "오픈") + " 완료! ✓");
     setTimeout(() => setProdMsg(""), 1500);
   };
-  const toggleProdWindowOverride = async gen => {
-    const key = prodWindowOverrideKey(gen);
-    const cur = await db.get(key);
-    await db.set(key, !cur);
+  const saveLDeadlineExt = async (gen, dateStr) => {
+    await db.set(lDeadlineExtKey(gen), dateStr || null);
+    setOpenRefresh(r => r + 1);
+  };
+  const saveSDeadlineExt = async (year, month, dateStr) => {
+    await db.set(sDeadlineExtKey(year, month), dateStr || null);
     setOpenRefresh(r => r + 1);
   };
   const addOpenMonth = async () => {
@@ -2094,8 +2110,8 @@ export default function App() {
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
                   {LACHAS.map(cha=><OpenChaToggleByGen key={cha} cha={cha} gen={prodGen} refreshKey={openRefresh} onToggle={()=>toggleOpenCha(cha,prodGen)}/>)}
                 </div>
-                <div style={{fontSize:12,color:T.muted,marginBottom:6}}>제품신청은 {genIsEven(prodGen)?"매월 26일~말일":"매월 1일~5일"}에 자동으로 열립니다. 예외적으로 지금 바로 열려면:</div>
-                <ProdWindowOverrideToggle gen={prodGen} refreshKey={openRefresh} onToggle={()=>toggleProdWindowOverride(prodGen)}/>
+                <div style={{fontSize:12,color:T.muted,marginBottom:6}}>제품신청은 {genIsEven(prodGen)?"매월 26일~말일":"매월 1일~5일"}에 자동으로 열립니다. 일부 회원이 놓쳤다면 아래에서 이 기수의 마감을 특정 날짜까지 연장할 수 있습니다.</div>
+                <DeadlineExtEditor dbKey={lDeadlineExtKey(prodGen)} label={prodGen+" 제품신청 마감 연장"} refreshKey={openRefresh} onSave={dateStr=>saveLDeadlineExt(prodGen,dateStr)}/>
               </>):<div style={{padding:"14px",background:"#F9F6F2",borderRadius:10,textAlign:"center",fontSize:13,color:T.muted}}>기수를 선택하면 차수 오픈 현황을 볼 수 있습니다.</div>}
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginTop:10,fontWeight:700}}>{prodMsg}</div>}
             </>)}
@@ -2110,6 +2126,8 @@ export default function App() {
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginBottom:10,fontWeight:700}}>{prodMsg}</div>}
               <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:8}}>현재 오픈된 달</div>
               <OpenMonthList grade={prodGrade} refreshKey={openRefresh}/>
+              <div style={{fontSize:12,color:T.muted,margin:"14px 0 6px"}}>특정 라운드(아래 "제품 등록"에서 고른 {prodYear}년 {prodMonth}월)만 놓친 회원이 있다면 그 라운드의 신청 마감을 특정 날짜까지 연장할 수 있습니다.</div>
+              <DeadlineExtEditor dbKey={sDeadlineExtKey(prodYear,prodMonth)} label={prodYear+"년 "+prodMonth+"월 제품신청 마감 연장"} refreshKey={openRefresh} onSave={dateStr=>saveSDeadlineExt(prodYear,prodMonth,dateStr)}/>
             </>)}
           </div>
           <div style={S.card}>

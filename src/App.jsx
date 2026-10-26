@@ -830,7 +830,7 @@ export default function App() {
     if (item.status === "approved") return;
     const updated = { ...item, status: "approved", rejectedReason: "" };
     delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
-    await db.set(missionDataKey(item.grade, item.suppId, item.ym), updated);
+    if (!await db.set(missionDataKey(item.grade, item.suppId, item.ym), updated)) { alert("승인 저장에 실패했습니다. 다시 시도해 주세요."); return; }
     setAllMissions(prev => prev.map(m => (m.suppId === item.suppId && m.ym === item.ym) ? { ...m, status: "approved", rejectedReason: "" } : m));
     setMissionActionMsg("✅ " + item.suppName + " 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
@@ -840,7 +840,7 @@ export default function App() {
     if (!supp) return;
     const updated = { ...item, status: "rejected", rejectedReason: reason };
     delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
-    await db.set(missionDataKey(supp.grade, supp.id, item.ym), updated);
+    if (!await db.set(missionDataKey(supp.grade, supp.id, item.ym), updated)) { alert("반려 저장에 실패했습니다. 다시 시도해 주세요."); return; }
     const cur = await db.get(missionExtraQuotaKey(supp.grade, supp.id, item.ym)) || 0;
     await db.set(missionExtraQuotaKey(supp.grade, supp.id, item.ym), Math.max(0, cur - 1));
     setRejectTarget(null);
@@ -852,13 +852,15 @@ export default function App() {
     const targets = allMissions.filter(m => m.status === "submitted" && (missionGradeFilter === "전체" || m.grade === missionGradeFilter));
     if (!targets.length) return;
     if (!window.confirm(targets.length + "건을 모두 승인하시겠습니까?")) return;
-    await Promise.all(targets.map(item => {
+    const oks = await Promise.all(targets.map(item => {
       const updated = { ...item, status: "approved", rejectedReason: "" };
       delete updated.suppId; delete updated.suppName; delete updated.grade; delete updated.gen; delete updated.ym;
       return db.set(missionDataKey(item.grade, item.suppId, item.ym), updated);
     }));
-    setAllMissions(prev => prev.map(m => targets.some(t => t.suppId === m.suppId && t.ym === m.ym) ? { ...m, status: "approved", rejectedReason: "" } : m));
-    setMissionActionMsg("✅ " + targets.length + "건 일괄 승인 완료!");
+    const done = targets.filter((_, i) => oks[i]);
+    setAllMissions(prev => prev.map(m => done.some(t => t.suppId === m.suppId && t.ym === m.ym) ? { ...m, status: "approved", rejectedReason: "" } : m));
+    if (done.length < targets.length) alert((targets.length - done.length) + "건 승인 저장에 실패했습니다. 다시 시도해 주세요.");
+    setMissionActionMsg("✅ " + done.length + "건 일괄 승인 완료!");
     setTimeout(() => setMissionActionMsg(""), 2500);
   };
   const saveMissionDraft = async () => {
@@ -1480,7 +1482,7 @@ export default function App() {
           <div><Logo /><div style={{fontSize:11,color:T.muted,marginTop:2}}>{me.gen} · {me.nick}&nbsp;<span style={S.tag(me.grade)}>{GN[me.grade]}</span></div></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
             {[["notices","공지"],["months","활동"],["product","제품"],["mission","튼특미션"],["myinfo","내정보"],["inquiry","문의"]].map(([id,label])=>(
-              <button key={id} onClick={()=>{setSp(id);if(id==="product"){loadMyQuota();}}}
+              <button key={id} onClick={()=>{setSp(id);if(id==="product"){loadMyQuota();}if(id==="mission"){db.get(missionDataKey(me.grade,me.id)).then(d=>{if(d)setMyMission(d);});}}}
                 style={{...S.btn(sp===id?T.pc:id==="mission"?(isMissionOpen?T.missionL:"#EEE8E0"):"#EEE8E0",sp===id?"#fff":id==="mission"?(isMissionOpen?T.mission:T.text):T.text,true),position:"relative"}}>
                 {label}
                 {id==="mission"&&myMission?.status==="submitted"&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:4,background:"#E0B97A",display:"block"}}/>}

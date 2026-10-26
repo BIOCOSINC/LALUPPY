@@ -54,10 +54,9 @@ const currentYMLabel = () => { const k = kstNow(); return k.year + "년 " + k.mo
 const endOfMonthLabel = () => { const k = kstNow(); return formatDate(new Date(k.year, k.month, 0)); };
 const missionSettingKey = () => "mission:setting:global";
 const missionDataKey = (grade, memberId, ym = currentYM()) => "mission:" + grade + ":" + memberId + ":" + ym;
-// 마감일 규칙: 시크릿은 전월11일~금월10일 활동->금월11~15일 신청(같은 달 미션과 페어), 라루피 짝수기는 전월26~금월25일 활동->26~말일 신청(전월 미션과 페어), 홀수기는 전월 한달 활동->금월1~5일 신청(전전월 미션과 페어)
+// 마감일 규칙: 시크릿은 전월11일~금월10일 활동->금월11~15일 신청(같은 달 미션과 페어), 라루피(전 기수 공통)는 전월 한달 활동->금월1~5일 신청(전전월 미션과 페어)
 const addMonths = (year, month, delta) => { const d = new Date(year, month - 1 + delta, 1); return { year: d.getFullYear(), month: d.getMonth() + 1 }; };
 const ymStr = (year, month) => year + "-" + String(month).padStart(2, "0");
-const genIsEven = gen => (parseInt(gen, 10) || 0) % 2 === 0;
 // 주의: 제품/신청(selection) 라벨은 "신청이 일어나는 달"(예: 9월) 기준이고, 활동(activity) 라벨은 "활동이 시작하는 달"(예: 8월) 기준이라 한 달 차이가 난다.
 const isSAppWindowOpen = (year, month, kst = kstNow()) => {
   const n = dnum(kst.year, kst.month, kst.day);
@@ -68,9 +67,7 @@ const isSActivityWindowOpen = (year, month, kst = kstNow()) => {
   const n = dnum(kst.year, kst.month, kst.day);
   return n >= dnum(year, month, 11) && n <= dnum(ey, em, 10);
 };
-const isLAppWindowOpen = (gen, kst = kstNow()) => {
-  return genIsEven(gen) ? kst.day >= 26 : kst.day <= 5;
-};
+const isLAppWindowOpen = (gen, kst = kstNow()) => kst.day <= 5;
 const lDeadlineExtKey = gen => "deadlineExt:laroupi:" + gen;
 const sDeadlineExtKey = (year, month) => "deadlineExt:secret:" + year + ":" + month;
 // ext는 "YYYY-MM-DD" 문자열(그 날짜까지 신청 연장) 또는 null(연장 없음)
@@ -549,8 +546,7 @@ export default function App() {
     if (me.grade === G.L) {
       extraKey = "extraQuota:laroupi:cha:" + selectedCha;
       const now = kstNow();
-      const offset = genIsEven(me.gen) ? 1 : 2;
-      const paired = addMonths(now.year, now.month, -offset);
+      const paired = addMonths(now.year, now.month, -2);
       missionYm = ymStr(paired.year, paired.month);
     } else {
       extraKey = "extraQuota:" + me.grade + ":" + selYr + ":" + selMo;
@@ -716,7 +712,7 @@ export default function App() {
       const ext = await db.get(lDeadlineExtKey(me.gen));
       if (!isLAppWindowOpen(me.gen) && !isDeadlineExtended(ext)) {
         setCanSelectProduct(false);
-        setCanSelectReason("제품 신청 가능 기간이 아닙니다. (" + (genIsEven(me.gen) ? "매월 26일~말일" : "매월 1일~5일") + ")");
+        setCanSelectReason("제품 신청 가능 기간이 아닙니다. (매월 1일~5일)");
         return;
       }
       setCanSelectProduct(true); setCanSelectReason("");
@@ -2112,7 +2108,7 @@ export default function App() {
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
                   {LACHAS.map(cha=><OpenChaToggleByGen key={cha} cha={cha} gen={prodGen} refreshKey={openRefresh} onToggle={()=>toggleOpenCha(cha,prodGen)}/>)}
                 </div>
-                <div style={{fontSize:12,color:T.muted,marginBottom:6}}>제품신청은 {genIsEven(prodGen)?"매월 26일~말일":"매월 1일~5일"}에 자동으로 열립니다. 일부 회원이 놓쳤다면 아래에서 이 기수의 마감을 특정 날짜까지 연장할 수 있습니다.</div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:6}}>제품신청은 매월 1일~5일에 자동으로 열립니다. 일부 회원이 놓쳤다면 아래에서 이 기수의 마감을 특정 날짜까지 연장할 수 있습니다.</div>
                 <DeadlineExtEditor dbKey={lDeadlineExtKey(prodGen)} label={prodGen+" 제품신청 마감 연장"} refreshKey={openRefresh} onSave={dateStr=>saveLDeadlineExt(prodGen,dateStr)}/>
               </>):<div style={{padding:"14px",background:"#F9F6F2",borderRadius:10,textAlign:"center",fontSize:13,color:T.muted}}>기수를 선택하면 차수 오픈 현황을 볼 수 있습니다.</div>}
               {prodMsg&&<div style={{fontSize:13,color:T.pc,marginTop:10,fontWeight:700}}>{prodMsg}</div>}

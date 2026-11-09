@@ -454,6 +454,7 @@ export default function App() {
   const [orderList, setOrderList] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [orderGenFilter, setOrderGenFilter] = useState("전체");
+  const [orderSearch, setOrderSearch] = useState("");
   // 튼특미션 설정 (관리자) - 라루피/시크릿 공통(통합)
   const [missionSettingForm, setMissionSettingForm] = useState({ isOpen: false, prodName: "튼특크림", targetMode: "all", targetIds: [] });
   const [missionExcelPreview, setMissionExcelPreview] = useState([]);
@@ -532,6 +533,8 @@ export default function App() {
     await db.set(deliveryKey(prodGrade, suppId, prodCha, prodYear, prodMonth), !current);
     await loadOrders();
   };
+  const orderMatches = o => (orderGenFilter === "전체" || o.gen === orderGenFilter)
+    && (!orderSearch.trim() || o.suppName.toLowerCase().includes(orderSearch.trim().toLowerCase()));
   const orderPeriodLabel = () => prodGrade === G.L ? prodCha + "차" : prodYear + "년 " + prodMonth + "월";
   const cancelOrder = async (suppId, count) => {
     const s = supps.find(x => x.id === suppId);
@@ -2241,6 +2244,9 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={S.h2}><Package size={16} style={{verticalAlign:-3,marginRight:6}}/>신청 현황 &amp; 배송완료 처리</div>
               <div style={{display:"flex",gap:6}}>
+                {prodGrade===G.L&&<select value={prodCha} onChange={e=>setProdCha(+e.target.value)} style={S.sel}>
+                  {LACHAS.map(c=><option key={c} value={c}>{c}차 신청분</option>)}
+                </select>}
                 <select value={orderGenFilter} onChange={e=>setOrderGenFilter(e.target.value)} style={S.sel}>
                   <option value="전체">전체 기수</option>
                   {[...new Set(supps.filter(s=>s.grade===prodGrade).map(s=>s.gen))].sort().map(g=><option key={g} value={g}>{g}</option>)}
@@ -2249,9 +2255,15 @@ export default function App() {
               </div>
             </div>
             <div style={{fontSize:12,color:T.muted,marginBottom:14}}>{prodGrade===G.L?"라루피 "+prodCha+"차":"라루피시크릿 "+prodYear+"년 "+prodMonth+"월"} 기준 · 배송완료 처리하면 다음 {prodGrade===G.L?"차수":"달"}가 오픈될 때까지 해당 회원은 신청을 변경할 수 없습니다.</div>
+            <div style={{position:"relative",marginBottom:12}}>
+              <Search size={14} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:T.muted}}/>
+              <input style={{width:"100%",padding:"8px 10px 8px 32px",border:"1.5px solid "+(orderSearch?T.pc:T.border),borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",background:"#fff",fontFamily:"inherit"}}
+                placeholder="이름(닉네임) 또는 기수로 검색" value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} />
+              {orderSearch&&<button onClick={()=>setOrderSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:T.muted,padding:0}}>×</button>}
+            </div>
             {loadingOrders&&<div style={{textAlign:"center",padding:16,color:T.muted,fontSize:12}}>불러오는 중...</div>}
-            {!loadingOrders&&orderList.filter(o=>orderGenFilter==="전체"||o.gen===orderGenFilter).length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>등록된 회원이 없습니다.</div>}
-            {!loadingOrders&&orderList.filter(o=>orderGenFilter==="전체"||o.gen===orderGenFilter).map(o=>o.items.length===0?(
+            {!loadingOrders&&orderList.filter(orderMatches).length===0&&<div style={{textAlign:"center",padding:"10px 0",color:T.muted,fontSize:12}}>{orderSearch.trim()?"검색 결과가 없습니다.":"등록된 회원이 없습니다."}</div>}
+            {!loadingOrders&&orderList.filter(orderMatches).map(o=>o.items.length===0?(
               <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid #EEE",background:"#F5F5F5"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div style={{fontWeight:700,fontSize:13,color:T.muted}}>{o.suppName}</div>

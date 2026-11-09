@@ -532,8 +532,10 @@ export default function App() {
     await db.set(deliveryKey(prodGrade, suppId, prodCha, prodYear, prodMonth), !current);
     await loadOrders();
   };
+  const orderPeriodLabel = () => prodGrade === G.L ? prodCha + "차" : prodYear + "년 " + prodMonth + "월";
   const cancelOrder = async (suppId, count) => {
-    if (!window.confirm("이 회원의 신청 내역을 취소하시겠습니까? 되돌릴 수 없습니다.")) return;
+    const s = supps.find(x => x.id === suppId);
+    if (!window.confirm((s ? s.gen + " " + s.nick + "님의 " : "이 회원의 ") + orderPeriodLabel() + " 신청 내역을 취소하시겠습니까? 되돌릴 수 없습니다.")) return;
     const isLAdmin = prodGrade === G.L;
     const prefix = isLAdmin ? "selection:" + suppId + ":cha:" + prodCha + ":slot:" : "selection:" + suppId + ":" + prodYear + ":" + prodMonth + ":slot:";
     await Promise.all(Array.from({ length: count }, (_, i) => db.set(prefix + (i + 1), null)));
@@ -2259,12 +2261,16 @@ export default function App() {
             ):(
               <div key={o.suppId} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,border:"1.5px solid "+(o.delivered?"#A5D6A7":T.border),background:o.delivered?"#E8F5E9":"#FAFAFA"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                  <div style={{fontWeight:700,fontSize:13}}>{o.suppName}</div>
+                  <div style={{fontWeight:700,fontSize:13}}>
+                    {o.suppName}
+                    <span style={{marginLeft:6,fontSize:11,padding:"2px 7px",borderRadius:6,background:T.pcL,color:T.pc,fontWeight:700}}>{orderPeriodLabel()} 신청분</span>
+                    {o.items[0]?.selDate&&<span style={{marginLeft:4,fontSize:11,color:T.muted,fontWeight:400}}>· 신청일 {o.items[0].selDate}</span>}
+                  </div>
                   <div style={{display:"flex",gap:6}}>
                     <button onClick={()=>toggleDelivered(o.suppId,o.delivered)} style={{...S.btn(o.delivered?"#EEE8E0":"#2E7D32",o.delivered?T.text:undefined,true)}}>
-                      {o.delivered?"↩ 배송완료 취소":"🚚 배송완료 처리"}
+                      {o.delivered?"↩ "+orderPeriodLabel()+" 배송완료 취소":"🚚 "+orderPeriodLabel()+" 배송완료 처리"}
                     </button>
-                    <button onClick={()=>cancelOrder(o.suppId,o.items.length)} style={S.btn("#FDECEA","#C0392B",true)}>❌ 신청 취소</button>
+                    <button onClick={()=>cancelOrder(o.suppId,o.items.length)} style={S.btn("#FDECEA","#C0392B",true)}>❌ {orderPeriodLabel()} 신청 취소</button>
                   </div>
                 </div>
                 <div style={{fontSize:12,color:T.muted}}>{o.items.map(it=>it.productName).join(", ")}</div>

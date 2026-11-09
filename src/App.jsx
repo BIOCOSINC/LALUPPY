@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Megaphone, Target, PenLine, ShoppingBag, Package, MessageCircle, Rss, Pin, Plus, UserPlus,
@@ -392,8 +392,8 @@ export default function App() {
   const [availableProds, setAvailableProds] = useState([]);
   const [mySelections, setMySelections] = useState([]);
   const [selMsg, setSelMsg] = useState("");
-  const [canSelectProduct, setCanSelectProduct] = useState(false);
-  const [canSelectReason, setCanSelectReason] = useState("");
+  const [canSelectProduct, setCanSelectProductRaw] = useState(false);
+  const [canSelectReason, setCanSelectReasonRaw] = useState("");
   const [selConfirmProd, setSelConfirmProd] = useState(null);
   const [myQuota, setMyQuota] = useState(BASE_QUOTA[G.L]);
   const [myDelivered, setMyDelivered] = useState(false);
@@ -539,8 +539,11 @@ export default function App() {
     await Promise.all(Array.from({ length: count }, (_, i) => db.set(prefix + (i + 1), null)));
     await loadOrders();
   };
+  // 차수/월을 빠르게 바꿀 때 이전 요청의 응답이 늦게 도착해 현재 화면을 덮어쓰지 않도록, 최신 요청 번호만 반영한다
+  const selReq = useRef(0);
   const loadMyQuota = async () => {
     if (!me) return;
+    const tok = selReq.current;
     const base = BASE_QUOTA[me.grade] || 1;
     let extraKey, missionYm;
     if (me.grade === G.L) {
@@ -555,12 +558,15 @@ export default function App() {
     }
     const data = await db.get(extraKey) || {};
     const missionExtra = await db.get(missionExtraQuotaKey(me.grade, me.id, missionYm)) || 0;
+    if (tok !== selReq.current) return;
     setMyQuota(base + (data[me.id] || 0) + missionExtra);
   };
   const loadMyDelivered = async () => {
     if (!me) return;
+    const tok = selReq.current;
     const key = deliveryKey(me.grade, me.id, selectedCha, selYr, selMo);
     const d = await db.get(key);
+    if (tok !== selReq.current) return;
     setMyDelivered(!!d);
   };
   useEffect(() => {
@@ -604,8 +610,9 @@ export default function App() {
   }, [me]);
   useEffect(() => {
     if (me && sp === "product") {
+      const tok = ++selReq.current;
       setSelLoading(true);
-      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota(), loadMyDelivered()]).finally(() => setSelLoading(false));
+      Promise.all([loadAvailableProds(), loadMySelections(), loadCanSelect(), loadMyQuota(), loadMyDelivered()]).finally(() => { if (tok === selReq.current) setSelLoading(false); });
     }
   }, [me, sp, selectedCha, selYr, selMo, openChaList]);
   useEffect(() => {
@@ -668,24 +675,20 @@ export default function App() {
   };
   const loadAvailableProds = async () => {
     if (!me) return;
-    if (me.grade === G.L) {
-      if (!openChaList.includes(selectedCha)) { setAvailableProds([]); return; }
-      setAvailableProds(await db.get("products:laroupi:cha:" + selectedCha) || []);
-    } else {
-      setAvailableProds(await db.get("products:" + me.grade + ":" + selYr + ":" + selMo) || []);
-    }
+    const tok = selReq.current;
+    if (me.grade === G.L && !openChaList.includes(selectedCha)) { setAvailableProds([]); return; }
+    const list = await db.get(me.grade === G.L ? "products:laroupi:cha:" + selectedCha : "products:" + me.grade + ":" + selYr + ":" + selMo) || [];
+    if (tok !== selReq.current) return;
+    setAvailableProds(list);
   };
   const loadMySelections = async () => {
     if (!me) return;
-    if (me.grade === G.L) {
-      const keys = await db.list("selection:" + me.id + ":cha:" + selectedCha + ":slot:");
-      const list = await Promise.all(keys.map(k => db.get(k)));
-      setMySelections(list.filter(Boolean));
-    } else {
-      const keys = await db.list("selection:" + me.id + ":" + selYr + ":" + selMo + ":slot:");
-      const list = await Promise.all(keys.map(k => db.get(k)));
-      setMySelections(list.filter(Boolean));
-    }
+    const tok = selReq.current;
+    const prefix = me.grade === G.L ? "selection:" + me.id + ":cha:" + selectedCha + ":slot:" : "selection:" + me.id + ":" + selYr + ":" + selMo + ":slot:";
+    const keys = await db.list(prefix);
+    const list = await Promise.all(keys.map(k => db.get(k)));
+    if (tok !== selReq.current) return;
+    setMySelections(list.filter(Boolean));
   };
   useEffect(() => { if (me && me.grade === G.S && sp === "product") setMySelections([]); }, [selYr, selMo]);
   useEffect(() => { if (me && me.grade === G.L && sp === "product") setMySelections([]); }, [selectedCha]);
@@ -695,6 +698,9 @@ export default function App() {
   };
   const loadCanSelect = async () => {
     if (!me) return;
+    const tok = selReq.current;
+    const setCanSelectProduct = v => { if (tok === selReq.current) setCanSelectProductRaw(v); };
+    const setCanSelectReason = v => { if (tok === selReq.current) setCanSelectReasonRaw(v); };
     if (me.grade === G.L) {
       if (!openChaList.includes(selectedCha)) {
         setCanSelectProduct(false);
@@ -1009,7 +1015,19 @@ export default function App() {
     });
   };
   const submitDraftSelections = async () => {
-    if (!me || selLoading) return;
+    if (!me || selLoading || myDelivered) return;
+    if (!canSelectProduct) {
+      setSelMsg("⚠️ 지금은 제품 신청 기간이 아닙니다.");
+      setTimeout(() => setSelMsg(""), 3000);
+      return;
+    }
+    // 다른 차수/월 제품이 섞여 들어온 경우 저장하지 않는다
+    if (draftSelections.some(d => !availableProds.some(p => p.id === d.productId))) {
+      setSelMsg("⚠️ 선택 목록이 올바르지 않습니다. 새로고침 후 다시 선택해 주세요.");
+      setDraftSelections([]);
+      setTimeout(() => setSelMsg(""), 3000);
+      return;
+    }
     if (draftSelections.length !== myQuota) {
       setSelMsg("⚠️ 정확히 " + myQuota + "개를 모두 선택해야 신청할 수 있습니다. (현재 " + draftSelections.length + "/" + myQuota + ")");
       setTimeout(() => setSelMsg(""), 3000);
@@ -1781,14 +1799,14 @@ export default function App() {
                           <div><div style={{fontWeight:700,fontSize:14}}>{p.name}</div><div style={{fontSize:12,color:T.muted,marginTop:2}}>코드: {p.code}</div></div>
                           {picked
                             ?<span style={{fontSize:11,color:T.pc,padding:"3px 8px",borderRadius:6,background:"#fff",fontWeight:700}}>✓ 선택됨 (취소)</span>
-                            :<span style={{fontSize:11,color:disabled?T.muted:T.pc,padding:"3px 8px",borderRadius:6,background:disabled?"#E8E8E8":T.pcL}}>{disabled?"정원마감":"선택하기"}</span>}
+                            :<span style={{fontSize:11,color:disabled?T.muted:T.pc,padding:"3px 8px",borderRadius:6,background:disabled?"#E8E8E8":T.pcL}}>{disabled?"선택 한도 도달":"선택하기"}</span>}
                         </div>
                       );
                     })}
                   </div>}
-                <button onClick={submitDraftSelections} disabled={draftSelections.length!==myQuota||selLoading}
-                  style={{...S.btn(draftSelections.length===myQuota&&!selLoading?T.pc:"#CCC"),width:"100%",cursor:draftSelections.length===myQuota&&!selLoading?"pointer":"not-allowed"}}>
-                  {selLoading?"불러오는 중...":draftSelections.length===myQuota?"✅ "+myQuota+"개 신청하기":"⚠️ "+myQuota+"개를 모두 선택해 주세요 ("+draftSelections.length+"/"+myQuota+")"}
+                <button onClick={submitDraftSelections} disabled={!canSelectProduct||draftSelections.length!==myQuota||selLoading}
+                  style={{...S.btn(canSelectProduct&&draftSelections.length===myQuota&&!selLoading?T.pc:"#CCC"),width:"100%",cursor:canSelectProduct&&draftSelections.length===myQuota&&!selLoading?"pointer":"not-allowed"}}>
+                  {selLoading?"불러오는 중...":!canSelectProduct?"🔒 신청 기간이 아닙니다":draftSelections.length===myQuota?"✅ "+myQuota+"개 신청하기":"⚠️ "+myQuota+"개를 모두 선택해 주세요 ("+draftSelections.length+"/"+myQuota+")"}
                 </button>
               </>)}
               {selMsg&&<div style={{textAlign:"center",marginTop:12,fontSize:13,fontWeight:700,color:T.pc}}>{selMsg}</div>}
